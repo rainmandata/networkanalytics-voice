@@ -1,0 +1,20 @@
+--Copyright DTH Software, Inc. Released us AGPL-3.0 License
+--This table should have 1 row per customer.
+
+-- Table: public.customers
+
+-- DROP TABLE public.customers;
+
+CREATE TABLE public.customers
+(
+    customer_id text COLLATE pg_catalog."default" NOT NULL,
+    customer_name text COLLATE pg_catalog."default" NOT NULL,
+    created_at timestamp without time zone NOT NULL DEFAULT now(),
+    updated_at timestamp without time zone,
+    CONSTRAINT customer_pkey PRIMARY KEY (customer_id)
+)
+
+TABLESPACE pg_default;
+
+ALTER TABLE public.customers
+    OWNER to postgres;
