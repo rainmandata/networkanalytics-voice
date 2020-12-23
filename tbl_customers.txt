@@ -1,6 +1,3 @@
---Copyright DTH Software, Inc. Released us AGPL-3.0 License
---This table should have 1 row per customer.
-
 -- Table: public.customers
 
 -- DROP TABLE public.customers;
