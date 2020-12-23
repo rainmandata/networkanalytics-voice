@@ -1,0 +1,19 @@
+-- Table: public.decks_apply_customer
+
+-- DROP TABLE public.decks_apply_customer;
+
+CREATE TABLE public.decks_apply_customer
+(
+    id serial NOT NULL,
+    deck_id text COLLATE pg_catalog."default" NOT NULL,
+    tg_id text COLLATE pg_catalog."default" NOT NULL,
+    apply_date timestamp with time zone NOT NULL DEFAULT now(),
+    created_at timestamp without time zone DEFAULT now(),
+    updated_at timestamp without time zone,
+    CONSTRAINT decks_apply_customer_pkey PRIMARY KEY (deck_id, tg_id, apply_date)
+)
+
+TABLESPACE pg_default;
+
+ALTER TABLE public.decks_apply_customer
+    OWNER to postgres;
