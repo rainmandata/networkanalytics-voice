@@ -1,0 +1,33 @@
+-- Table: public.trunk_groups_carrier
+
+-- DROP TABLE public.trunk_groups_carrier;
+
+CREATE TABLE public.trunk_groups_carrier
+(
+    tg_id text COLLATE pg_catalog."default" NOT NULL,
+    carrier_id text COLLATE pg_catalog."default" NOT NULL,
+    tg_name text COLLATE pg_catalog."default" NOT NULL,
+    tg_type text COLLATE pg_catalog."default" NOT NULL,
+    status text COLLATE pg_catalog."default" NOT NULL,
+    ports integer,
+    cps integer,
+    target_asr numeric(5,2),
+    target_ner numeric(5,2),
+    target_acd smallint,
+    target_sdr numeric(5,2),
+    target_rvmr numeric(5,2),
+    target_404r numeric(5,2),
+    target_487r numeric(5,2),
+    target_attempts integer,
+    target_minutes integer,
+    target_rate numeric(20,10),
+    target_404_max numeric(5,2),
+    created_at timestamp without time zone NOT NULL DEFAULT now(),
+    updated_at timestamp without time zone,
+    CONSTRAINT trunk_groups_carrier_pkey PRIMARY KEY (tg_id)
+)
+
+TABLESPACE pg_default;
+
+ALTER TABLE public.trunk_groups_carrier
+    OWNER to postgres;
