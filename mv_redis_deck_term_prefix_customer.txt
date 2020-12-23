@@ -1,0 +1,89 @@
+-- View: public.mv_redis_deck_term_prefix_customer
+
+--DEPENDENCIES--
+--1. Table: deck_term_prefix_customer
+
+
+--FOLLOW NUMBERED INSTRUCTIONS BELOW--
+
+--1. Only required if previous version is already installed.
+DROP MATERIALIZED VIEW public.mv_redis_deck_term_prefix_customer CASCADE;
+
+--2. Run this command. Required.
+CREATE MATERIALIZED VIEW public.mv_redis_deck_term_prefix_customer
+TABLESPACE pg_default
+AS
+ SELECT deck_term_prefix_customer.deck_id || '_' || deck_term_prefix_customer.prefix || '_' || 'E' AS key,
+    deck_term_prefix_customer.rate_inter AS rate,
+    deck_term_prefix_customer.deck_id,
+    deck_term_prefix_customer.prefix,
+    'E'::text AS juris
+   FROM deck_term_prefix_customer
+  WHERE deck_term_prefix_customer.rate_inter IS NOT NULL
+UNION ALL
+ SELECT deck_term_prefix_customer.deck_id || '_' || deck_term_prefix_customer.prefix || '_' || 'A' AS key,
+    deck_term_prefix_customer.rate_intra AS rate,
+    deck_term_prefix_customer.deck_id,
+    deck_term_prefix_customer.prefix,
+    'A'::text AS juris
+   FROM deck_term_prefix_customer
+  WHERE deck_term_prefix_customer.rate_intra IS NOT NULL
+UNION ALL
+ SELECT deck_term_prefix_customer.deck_id || '_' || deck_term_prefix_customer.prefix || '_' || 'U' AS key,
+    deck_term_prefix_customer.rate_ij AS rate,
+    deck_term_prefix_customer.deck_id,
+    deck_term_prefix_customer.prefix,
+    'U'::text AS juris
+   FROM deck_term_prefix_customer
+  WHERE deck_term_prefix_customer.rate_ij IS NOT NULL
+UNION ALL
+ SELECT deck_term_prefix_customer.deck_id || '_' || deck_term_prefix_customer.prefix || '_' || 'L' AS key,
+    deck_term_prefix_customer.rate_local AS rate,
+    deck_term_prefix_customer.deck_id,
+    deck_term_prefix_customer.prefix,
+    'L'::text AS juris
+   FROM deck_term_prefix_customer
+  WHERE deck_term_prefix_customer.rate_local IS NOT NULL
+UNION ALL
+ SELECT deck_term_prefix_customer.deck_id || '_' || deck_term_prefix_customer.prefix || '_' || 'EL' AS key,
+    deck_term_prefix_customer.rate_interlata AS rate,
+    deck_term_prefix_customer.deck_id,
+    deck_term_prefix_customer.prefix,
+    'EL'::text AS juris
+   FROM deck_term_prefix_customer
+  WHERE deck_term_prefix_customer.rate_interlata IS NOT NULL
+UNION ALL
+ SELECT deck_term_prefix_customer.deck_id || '_' || deck_term_prefix_customer.prefix || '_' || 'AL' AS key,
+    deck_term_prefix_customer.rate_intralata AS rate,
+    deck_term_prefix_customer.deck_id,
+    deck_term_prefix_customer.prefix,
+    'AL'::text AS juris
+   FROM deck_term_prefix_customer
+  WHERE deck_term_prefix_customer.rate_intralata IS NOT NULL
+UNION ALL
+ SELECT deck_term_prefix_customer.deck_id || '_' || deck_term_prefix_customer.prefix || '_' || 'ANI_TF' AS key,
+    deck_term_prefix_customer.rate_tfani AS rate,
+    deck_term_prefix_customer.deck_id,
+    deck_term_prefix_customer.prefix,
+    'ANI_TF'::text AS juris
+   FROM deck_term_prefix_customer
+  WHERE deck_term_prefix_customer.rate_tfani IS NOT NULL
+UNION ALL
+ SELECT deck_term_prefix_customer.deck_id || '_' || deck_term_prefix_customer.prefix || '_' || 'ANI_INTL' AS key,
+    deck_term_prefix_customer.rate_intlani AS rate,
+    deck_term_prefix_customer.deck_id,
+    deck_term_prefix_customer.prefix,
+    'ANI_INTL'::text AS juris
+   FROM deck_term_prefix_customer
+  WHERE deck_term_prefix_customer.rate_intlani IS NOT NULL
+  --order by prefix
+WITH DATA;
+
+--3. Run this command. Required.
+ALTER TABLE public.mv_redis_deck_term_prefix_customer
+    OWNER TO postgres;
+
+--4. Only required if doing concurrent refreshes of the view.
+CREATE UNIQUE INDEX on mv_redis_deck_term_prefix_customer (key); 
+
+--5. See Maintenance instructions for mv_redis_deck_term_prefix_customer https://github.com/rainmandata/networkanalytics-voice/wiki/Maintenance
