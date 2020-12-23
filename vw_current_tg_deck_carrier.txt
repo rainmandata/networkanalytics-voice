@@ -1,0 +1,17 @@
+-- View: public.vw_current_tg_deck_carrier
+
+-- DROP VIEW public.vw_current_tg_deck_carrier;
+
+CREATE OR REPLACE VIEW public.vw_current_tg_deck_carrier
+ AS
+ SELECT decks_apply_carrier.tg_id,
+    decks_apply_carrier.deck_id
+   FROM decks_apply_carrier
+  WHERE ((decks_apply_carrier.apply_date || '-'::text) || decks_apply_carrier.tg_id IN ( SELECT (max(decks_apply_1.apply_date) || '-'::text) || decks_apply_1.tg_id
+           FROM decks_apply_carrier decks_apply_1
+          WHERE decks_apply_1.apply_date <= now()
+          GROUP BY decks_apply_1.tg_id));
+
+ALTER TABLE public.vw_current_tg_deck_carrier
+    OWNER TO postgres;
+
