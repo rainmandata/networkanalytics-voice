@@ -1,0 +1,52 @@
+--Copyright DTH Software, Inc
+--Customer CDR (often referred to as A-leg) are used to create statistics and patterns on the --customer/ingress attempts. There should be 1 record per customer attempt. Data can be pushed directly --into this table. Custom formats can be staged into custom tables but ultimately will be normalized to --this structure.
+
+--Customer CDR are only required if you’re using customer-based features.
+
+
+
+--drop table public.cdr_customer
+
+--select * from cdr_customer
+
+CREATE UNLOGGED TABLE public.cdr_customer
+(
+    call_time timestamp without time zone NOT NULL,
+    sip_call_id text NOT NULL,
+switch_id text not null,
+    tg_id text NOT NULL,
+    ani text NOT NULL,
+    dnis text NOT NULL,
+    lrn text,
+    dest_lata integer,
+    dest_ocn text,
+dest_state text,
+dest_clli text,
+billing_prefix text,
+    routing_prefix text,
+    juris text NOT NULL,
+signal_ip text,
+media_ip text,
+    sip_code text NOT NULL,
+ring_time int,
+    duration integer,
+    duration_billed integer,
+    customer_rate numeric(20, 10),
+    customer_revenue numeric(20, 10),
+carrier_tg_id text null,
+carrier_rate numeric(20, 10),
+carrier_cost numeric(20, 10),
+profit numeric(20, 10),
+pdd int,
+lcr_depth smallint,
+    batch_id text NOT NULL,
+id bigserial NOT NULL,
+received_time timestamp not null default now()
+)
+WITH (
+    OIDS = FALSE
+)
+TABLESPACE pg_default;
+
+ALTER TABLE public.cdr_customer
+    OWNER to postgres;
