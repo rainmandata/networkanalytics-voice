@@ -1,0 +1,19 @@
+CREATE TABLE public.decks_customer
+(
+    deck_id text NOT NULL,
+    deck_name text NOT NULL,
+    deck_type text NOT NULL,
+    interval_min smallint NOT NULL,
+    interval_sub smallint NOT NULL,
+routing_method text not null, --lrn or dnis
+    created_at timestamp without time zone NOT NULL DEFAULT now(),
+    updated_at timestamp without time zone,
+    PRIMARY KEY (deck_id)
+)
+WITH (
+    OIDS = FALSE
+)
+TABLESPACE pg_default;
+
+ALTER TABLE public.decks_customer
+    OWNER to postgres;
