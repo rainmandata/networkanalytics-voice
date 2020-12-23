@@ -1,0 +1,19 @@
+--Copyright DTH Software, Inc. Released under AGPL-3.0 License
+
+-- Table: public.carriers
+
+-- DROP TABLE public.carriers;
+
+CREATE TABLE public.carriers
+(
+    carrier_id text COLLATE pg_catalog."default" NOT NULL,
+    carrier_name text COLLATE pg_catalog."default" NOT NULL,
+    created_at timestamp without time zone NOT NULL DEFAULT now(),
+    updated_at timestamp without time zone,
+    CONSTRAINT carriers_pkey PRIMARY KEY (carrier_id)
+)
+
+TABLESPACE pg_default;
+
+ALTER TABLE public.carriers
+    OWNER to postgres;
