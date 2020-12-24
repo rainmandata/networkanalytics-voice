@@ -1,0 +1,88 @@
+-- View: public.mv_redis_deck_term_prefix_carrier
+
+--DEPENDENCIES--
+--1. Table: deck_term_prefix_carrier
+
+
+--FOllOW NUMBERED INSTRUCTIONS--
+
+--1. Only required if removing previous version of the view.
+DROP MATERIALIZED VIEW public.mv_redis_deck_term_prefix_carrier CASCADE;
+
+--2. Required.
+CREATE MATERIALIZED VIEW public.mv_redis_deck_term_prefix_carrier
+TABLESPACE pg_default
+AS
+ SELECT deck_term_prefix_carrier.deck_id || '_' || deck_term_prefix_carrier.prefix || '_' || 'E' AS key,
+    deck_term_prefix_carrier.rate_inter AS rate,
+    deck_term_prefix_carrier.deck_id,
+    deck_term_prefix_carrier.prefix,
+    'E' AS juris
+   FROM deck_term_prefix_carrier
+  WHERE deck_term_prefix_carrier.rate_inter IS NOT NULL
+UNION ALL
+ SELECT deck_term_prefix_carrier.deck_id || '_' || deck_term_prefix_carrier.prefix || '_' || 'A' AS key,
+    deck_term_prefix_carrier.rate_intra AS rate,
+    deck_term_prefix_carrier.deck_id,
+    deck_term_prefix_carrier.prefix,
+    'A' AS juris
+   FROM deck_term_prefix_carrier
+  WHERE deck_term_prefix_carrier.rate_intra IS NOT NULL
+UNION ALL
+ SELECT deck_term_prefix_carrier.deck_id || '_' || deck_term_prefix_carrier.prefix || '_' || 'U' AS key,
+    deck_term_prefix_carrier.rate_ij AS rate,
+    deck_term_prefix_carrier.deck_id,
+    deck_term_prefix_carrier.prefix,
+    'U' AS juris
+   FROM deck_term_prefix_carrier
+  WHERE deck_term_prefix_carrier.rate_ij IS NOT NULL
+UNION ALL
+ SELECT deck_term_prefix_carrier.deck_id || '_' || deck_term_prefix_carrier.prefix || '_' || 'L' AS key,
+    deck_term_prefix_carrier.rate_local AS rate,
+    deck_term_prefix_carrier.deck_id,
+    deck_term_prefix_carrier.prefix,
+    'L' AS juris
+   FROM deck_term_prefix_carrier
+  WHERE deck_term_prefix_carrier.rate_local IS NOT NULL
+UNION ALL
+ SELECT deck_term_prefix_carrier.deck_id || '_' || deck_term_prefix_carrier.prefix || '_' || 'EL' AS key,
+    deck_term_prefix_carrier.rate_interlata AS rate,
+    deck_term_prefix_carrier.deck_id,
+    deck_term_prefix_carrier.prefix,
+    'EL' AS juris
+   FROM deck_term_prefix_carrier
+  WHERE deck_term_prefix_carrier.rate_interlata IS NOT NULL
+UNION ALL
+ SELECT deck_term_prefix_carrier.deck_id || '_' || deck_term_prefix_carrier.prefix || '_' || 'AL' AS key,
+    deck_term_prefix_carrier.rate_intralata AS rate,
+    deck_term_prefix_carrier.deck_id,
+    deck_term_prefix_carrier.prefix,
+    'AL' AS juris
+   FROM deck_term_prefix_carrier
+  WHERE deck_term_prefix_carrier.rate_intralata IS NOT NULL
+UNION ALL
+ SELECT deck_term_prefix_carrier.deck_id || '_' || deck_term_prefix_carrier.prefix || '_' || 'ANI_TF' AS key,
+    deck_term_prefix_carrier.rate_tfani AS rate,
+    deck_term_prefix_carrier.deck_id,
+    deck_term_prefix_carrier.prefix,
+    'ANI_TF' AS juris
+   FROM deck_term_prefix_carrier
+  WHERE deck_term_prefix_carrier.rate_tfani IS NOT NULL
+UNION ALL
+ SELECT deck_term_prefix_carrier.deck_id || '_' || deck_term_prefix_carrier.prefix || '_' || 'ANI_INTL' AS key,
+    deck_term_prefix_carrier.rate_intlani AS rate,
+    deck_term_prefix_carrier.deck_id,
+    deck_term_prefix_carrier.prefix,
+    'ANI_INTL' AS juris
+   FROM deck_term_prefix_carrier
+  WHERE deck_term_prefix_carrier.rate_intlani IS NOT NULL
+WITH DATA;
+
+--3. Required.													
+ALTER TABLE public.mv_redis_deck_term_prefix_carrier
+    OWNER TO postgres;
+	
+--4. Only required if doing concurrent refreshes of the view.
+CREATE UNIQUE INDEX on mv_redis_deck_term_prefix_carrier (key); 
+
+--5. See Maintenance instructions for mv_redis_deck_term_prefix_carrier https://github.com/rainmandata/networkanalytics-voice/wiki/Maintenance

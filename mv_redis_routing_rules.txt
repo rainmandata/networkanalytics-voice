@@ -1,0 +1,50 @@
+-- View: public.mv_redis_routing_rules
+
+--DEPENDENCIES--
+--1. Table: trunk_groups_customer
+--2. Materialized View: mv_redis_deck_term_prefix_carrier
+--3. Table: tg_routing
+--4. View: vw_current_tg_deck_carrier
+
+--FOLLOW NUMBERED INSTRUCTIONS--
+
+--1. Only required if dropping previous version.
+DROP MATERIALIZED VIEW public.mv_redis_routing_rules;
+
+--2. Required.
+CREATE MATERIALIZED VIEW public.mv_redis_routing_rules
+TABLESPACE pg_default
+AS
+ SELECT trunk_groups_customer.tg_id || '_' || (mv_redis_deck_term_prefix_carrier.prefix) AS sorted_set_key
+ , ROW_NUMBER() OVER (PARTITION BY trunk_groups_customer.tg_id || '_' || (mv_redis_deck_term_prefix_carrier.prefix) order by mv_redis_deck_term_prefix_carrier.rate) as key_order
+ , mv_redis_deck_term_prefix_carrier.juris || '_' || tg_routing.tg_id_carrier || '_' || mv_redis_deck_term_prefix_carrier.rate as value
+ ,trunk_groups_customer.tg_id AS tg_id_customer
+ ,mv_redis_deck_term_prefix_carrier.prefix
+ , mv_redis_deck_term_prefix_carrier.juris
+ , mv_redis_deck_term_prefix_carrier.rate AS carrier_rate
+ ,tg_routing.tg_id_carrier
+    ,vw_current_tg_deck_carrier.deck_id AS deck_id_carrier
+   FROM trunk_groups_customer
+     JOIN tg_routing ON tg_routing.tg_id_customer = trunk_groups_customer.tg_id
+     JOIN vw_current_tg_deck_carrier ON vw_current_tg_deck_carrier.tg_id = tg_routing.tg_id_carrier
+     JOIN mv_redis_deck_term_prefix_carrier ON mv_redis_deck_term_prefix_carrier.deck_id = vw_current_tg_deck_carrier.deck_id
+	 --where mv_redis_deck_term_prefix_carrier.rate > 0
+	 --order by prefix, juris, carrier_rate
+WITH DATA;
+
+--3. Required
+ALTER TABLE public.mv_redis_routing_rules
+    OWNER TO postgres;
+
+--4. Only required if doing concurrent refreshes of the view.
+CREATE UNIQUE INDEX on mv_redis_routing_rules (sorted_set_key, key_order); 
+
+--5. Only required if directly accessing the database for customer trunk groups ordered routing options. i.e., not using a cache. 
+CREATE INDEX idx_customertg_carrier_rates ON mv_redis_routing_rules (tg_id_customer, prefix) INCLUDE (key_order, juris, carrier_rate);
+
+--6. See Maintenance instructions for mv_redis_routing_rules https://github.com/rainmandata/networkanalytics-voice/wiki/Maintenance
+
+
+	
+	
+	
