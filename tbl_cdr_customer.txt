@@ -1,52 +1,58 @@
---Copyright DTH Software, Inc
---Customer CDR (often referred to as A-leg) are used to create statistics and patterns on the --customer/ingress attempts. There should be 1 record per customer attempt. Data can be pushed directly --into this table. Custom formats can be staged into custom tables but ultimately will be normalized to --this structure.
+--Customer CDR (often referred to as A-leg) are used to create statistics and patterns on the
+--customer/ingress attempts. There should be 1 record per customer attempt. Data can be pushed directly 
+--into this table. Custom formats can be staged into custom tables but ultimately will be normalized to 
+--this structure.
 
---Customer CDR are only required if you’re using customer-based features.
+--Customer CDR are only required if you’re using customer-based statistics.
+
+--DEPENDENCIES--
+--None
 
 
+--FOLLOW NUMBERED STEPS--
 
---drop table public.cdr_customer
+--1. Only required if replacing previous version.
+DROP TABLE public.cdr_customer
 
---select * from cdr_customer
-
+--2. Required.
 CREATE UNLOGGED TABLE public.cdr_customer
 (
-    call_time timestamp without time zone NOT NULL,
-    sip_call_id text NOT NULL,
-switch_id text not null,
-    tg_id text NOT NULL,
-    ani text NOT NULL,
-    dnis text NOT NULL,
-    lrn text,
-    dest_lata integer,
-    dest_ocn text,
-dest_state text,
-dest_clli text,
-billing_prefix text,
-    routing_prefix text,
-    juris text NOT NULL,
-signal_ip text,
-media_ip text,
-    sip_code text NOT NULL,
-ring_time int,
-    duration integer,
-    duration_billed integer,
-    customer_rate numeric(20, 10),
-    customer_revenue numeric(20, 10),
-carrier_tg_id text null,
-carrier_rate numeric(20, 10),
-carrier_cost numeric(20, 10),
-profit numeric(20, 10),
-pdd int,
-lcr_depth smallint,
-    batch_id text NOT NULL,
-id bigserial NOT NULL,
-received_time timestamp not null default now()
+    call_time timestamp without time zone NOT NULL, --Required. Start time of the call. Preferably in UTC.
+    sip_call_id text NOT NULL, -- Required. Unique SIP call identifier. Also used to join to cdr_carrier if required.
+switch_id text not null, --Required. UniqueID on the internal device that received the ingress attempt. The switch IP is perfectly viable as a value.
+    tg_id text NOT NULL, --Required. Value that identifies the customer's trunk group.
+    ani text, --Optional. Normalized ANI including country code. Required if using our ANI-based statistics.
+    dnis text, --Optional. Normalized DNIS including country code. Required if using our DNIS-based statistics.
+    lrn text, --Optional. Local Routing Number for the call.
+    dnis_lata integer, --Optional. Used for LATA-based statistics. If it is not in your CDR but you have LERG we can dip it from there. 
+    dnis_ocn text, --Optional. Used for OCN-based statistics. If it is not in your CDR but you have LERG we can dip it from there. 
+dnis_state text, --Optional. Used for State/Province-based statistics. If it is not in your CDR but you have LERG we can dip it from there. 
+dnis_clli text, -- Optional. Pronounced "silly". Common Language Location Identifier. If it is not in your CDR but you have LERG we can dip it from there. 
+billing_prefix text, --Optional. Prefix the customer was billed on. 
+    routing_prefix text, --Optional. Prefix used to route the call. 
+    juris text NOT NULL, --Required. https://github.com/rainmandata/networkanalytics-voice/wiki/Jurisdictions
+signal_ip text, --Optional. Customer's signaling IP. Only required if using signal IP-based statistics.
+media_ip text, --Optional. Customer's media IP. Only required if using media IP-based statistics.
+    sip_code text NOT NULL, --Required. Final release cause of the attempt. This is typically a SIP-standard integer value but you can insert internal text-based codes as some networks have custom indicators.
+ring_time int, --Optional. Duration of the ring. Seconds or milliseconds based on your preference.
+    duration integer, --Optional. Only needed for completed attempts. Leave 0 or null for incomplete attempts.
+    duration_billed integer, --Optional. Only needed for completed attempts. Leave 0 or null for incomplete attempts.
+    customer_rate numeric(20, 10), --Optional. Only required if Rain Man is being used for financial reporting. If not available in the CDR we can dip it from there customer deck.
+    customer_revenue numeric(20, 10), --Optional. Only required if Rain Man is being used for financial reporting. If not available in the CDR we can calculate it using customer_rate/billed_duration.
+carrier_tg_id text, --Optional. If you are not sending Rain Man a separate carrier CDR feed then you can include final carrier trunk group here. 
+carrier_rate numeric(20, 10), --Optional. If you are not sending Rain Man a separate CDR feed but would like financial reporting include it here.
+carrier_cost numeric(20, 10), --Optional. If you are not sending Rain Man a separate CDR feed but would like financial reporting include it here.
+pdd int, --Optional. Post Dial Delay as observed by the customer. Seconds or milliseconds based on your preference. Milliseconds recommended.
+lcr_depth smallint, --Optional. LCR Depth of the call. Used to identify inefficient routing.
+    batch_id text, --Optional. ID to uniquely identify the batch of records. Normally the CDR file names is used. If you do not supply a batch_id then we will generate one using switch_id and timestamp.
+id bigserial NOT NULL, --System-generated. Do not supply.
+received_time timestamp not null default now() --System-generated. Do not supply.
 )
 WITH (
     OIDS = FALSE
 )
 TABLESPACE pg_default;
 
+--3. Required.
 ALTER TABLE public.cdr_customer
     OWNER to postgres;
