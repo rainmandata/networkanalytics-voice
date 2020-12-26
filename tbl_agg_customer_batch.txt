@@ -1,0 +1,25 @@
+-- DROP TABLE public.agg_customer_batch;
+ 
+CREATE TABLE public.agg_customer_batch
+(
+    batch_id text COLLATE pg_catalog."default" not null,
+    attempts int not null,
+    completions int not null,
+    duration int not null,
+    duration_billed int not null,
+    revenue numeric(20, 10) not null,
+sd int not null,
+code_487 int not null,
+	code_404 int not null,
+start_time timestamp,
+end_time timestamp,
+	most_recent_cdr timestamp not null,
+processed_time timestamp not null default now()
+)
+WITH (
+    OIDS = FALSE
+)
+TABLESPACE pg_default;
+
+ALTER TABLE public.agg_customer_batch
+    OWNER to postgres;

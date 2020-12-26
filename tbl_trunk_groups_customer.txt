@@ -1,30 +1,30 @@
 -- Table: public.trunk_groups_customer
 
--- DROP TABLE public.trunk_groups_customer;
-
+-- DROP TABLE public.trunk_groups_customer CASCADE;
+ 
 CREATE TABLE public.trunk_groups_customer
 (
-    tg_id text COLLATE pg_catalog."default" NOT NULL,
-    customer_id text COLLATE pg_catalog."default",
-    tg_name text COLLATE pg_catalog."default",
-    tg_type text COLLATE pg_catalog."default",
+    tg_id text COLLATE pg_catalog."default" NOT NULL, --customer's trunk group ID
+    customer_id text COLLATE pg_catalog."default", --associated customer from customers table.
+    tg_name text COLLATE pg_catalog."default", --descriptive trunk group name
+    tg_type text COLLATE pg_catalog."default", --nanp or intl
     status text COLLATE pg_catalog."default" NOT NULL,
-    ports integer,
-    cps integer,
-    target_asr numeric(5,2),
-    target_ner numeric(5,2),
-    target_acd smallint,
-    target_sdr numeric(5,2),
-    target_rvmr numeric(5,2),
-    target_404r numeric(5,2),
-    target_487r numeric(5,2),
-    target_attempts integer,
-    target_minutes integer,
-    target_revenue numeric(20,2),
-    target_profit numeric(20,2),
-    target_rate numeric(20,10),
-    target_ppm numeric(20,10),
-    target_margin numeric(5,2),
+    ports integer, --max port allowed
+    cps integer, --max CPS allowed
+    target_asr numeric(5,2), --target ASR for trunk group. Used in reporting/alarming/dashboards.
+    target_ner numeric(5,2), --reserved for future use
+    target_acd smallint, --target ACD for trunk group. Used in reporting/alarming/dashboards.
+    target_sdr numeric(5,2), --target short duration ratio/percent for trunk group. Used in reporting/alarming/dashboards.
+    target_rvmr numeric(5,2), --reserved for future use.
+    target_404r numeric(5,2), --target 404 ratio for trunk group. Used in reporting/alarming/dashboards.
+    target_487r numeric(5,2), --target 487 ratio for trunk group. Used in reporting/alarming/dashboards.
+    target_attempts integer, --target daily attempts for trunk group. Used in reporting/alarming/dashboards/traffic loss alarm.
+    target_minutes integer, --target daily minutes for trunk group. Used in reporting/alarming/dashboards/alarms.
+    target_revenue numeric(20,2), --target daily revenue for trunk group. Used in reporting/alarming/dashboards/alarms.
+    target_profit numeric(20,2), --target daily profit for trunk group. Used in reporting/alarming/dashboards/alarms.
+    target_rate numeric(20,10), --target daily average rate for trunk group. Used in reporting/alarming/dashboards/alarms.
+    target_ppm numeric(20,10), --target profit per minute for trunk group. Used in reporting/alarming/dashboards/alarms.
+    target_margin numeric(5,2), --target margin for trunk group. Used in reporting/alarming/dashboards/alarms.
     created_at timestamp without time zone NOT NULL DEFAULT now(),
     updated_at timestamp without time zone,
     CONSTRAINT trunk_groups_customer_pkey PRIMARY KEY (tg_id)

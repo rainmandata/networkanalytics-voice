@@ -1,0 +1,764 @@
+-- FUNCTION: public.fnprocess_cdr_customer()
+
+--DESCRIPTION: This function will process a batch of customer CDR. If
+--you supply the batch_id parameter, it will process that batch. If you do not
+--then it will choose the oldest batch that has not received in any new records
+--in the last 10 seconds.
+--Note: If a CDR batch gets borked, you can resubmit it and Rain Man will clear out the 
+--previous entries for that batch automatically.
+
+
+--DEPENDENCIES--
+--1. Table: agg_customer_batch
+--2. Table: cdr_customer
+--3. Table: lerg6 (BETA)
+--4. Table: agg_customer_network_1min
+--5. Table: agg_customer_ani_1min  (BETA)
+--6. Table: agg_customer_switchid_1min  (BETA)
+--7. Table: agg_customer_signalip_1min  (BETA)
+--8. Table: agg_customer_mediaip_1min  (BETA)
+--9. Table: agg_customer_network_sipcode_1min  (BETA)
+--10. Table: agg_customer_tg_1min  (BETA)
+--11. Table: agg_customer_lata_1min  (BETA)
+--12. Table: agg_customer_ocn_1min  (BETA)
+--13. Table: agg_customer_state_1min  (BETA)
+--14. Table: agg_customer_clli_1min  (BETA)
+--15. Table: agg_customer_tg_prefix_1min  (BETA)
+--16. Table: agg_customer_tg_prefix_juris_1min  (BETA)
+--17. Table: bad_numbers  (BETA)
+--18. Table: settings (BETA)
+--19. Table: trunk_groups_customer
+--20. Table: signal_ips_customer
+
+
+
+--PSEUDO-DEPENDENCIES--
+--Some dependencies are only required for specific statistics.
+--1. None
+
+
+
+
+--TODO: create indices with fill factor = 100
+--TODO: Add execution of custom function so people can add custom behavior without modifying this function directly.
+
+-- DROP FUNCTION public.fnprocess_cdr_customer(text);
+--Manually execute function with batch auto-detect: SELECT public.fnprocess_cdr_customer(null)
+
+
+CREATE OR REPLACE FUNCTION public.fnprocess_cdr_customer(
+in_batch_id text
+	)
+    RETURNS void
+    LANGUAGE 'plpgsql'
+
+    COST 100
+    VOLATILE 
+AS $BODY$
+
+DECLARE 
+vstart_time timestamp;
+--vend_time timestamp;
+
+BEGIN
+
+RAISE NOTICE 'Determining which batch to process: %', clock_timestamp();
+vstart_time = clock_timestamp();
+drop table if exists tmp_batches;
+create temporary table tmp_batches (batch_id text not null);
+
+--get oldest batch and run it if no batch_id was supplied.
+if (in_batch_id is null) then
+	drop table if exists tmp_batches_received;
+	create table tmp_batches_received as
+		select batch_id, max(received_time) as "last_update" from cdr_customer group by batch_id;
+
+	insert into tmp_batches
+		select batch_id from tmp_batches_received where last_update < (now() - INTERVAL '10 seconds') and batch_id not in (select batch_id from agg_customer_batch where batch_id != 'CDR_REVIEW') order by last_update limit 1;
+else
+	insert into tmp_batches (batch_id) values (in_batch_id);
+end if;
+
+RAISE NOTICE 'Runtime (sec): %', (SELECT EXTRACT(EPOCH FROM clock_timestamp() - vstart_time));
+RAISE NOTICE 'BatchID: %', (select batch_id from tmp_batches limit 1);
+
+if (select batch_id from tmp_batches limit 1) is null then
+	RAISE NOTICE 'No batches found to process. Exiting';
+	return;
+end if;
+
+
+
+--normalize secondary fields
+RAISE NOTICE 'Normalizing secondary fields: %', clock_timestamp();
+vstart_time = clock_timestamp();
+--add custom handling here.
+RAISE NOTICE 'Runtime (sec): %', (SELECT EXTRACT(EPOCH FROM clock_timestamp() - vstart_time));
+
+--normalize juris
+RAISE NOTICE 'Normalizing jurisdiction: %', clock_timestamp();
+vstart_time = clock_timestamp();
+update cdr_customer set juris = 'E' where juris in ('INTERSTATE');
+update cdr_customer set juris = 'A' where juris in ('INTRASTATE');
+update cdr_customer set juris = 'U' where juris in ('NON-JURISDICTIONAL', 'INDETERMINATE');
+RAISE NOTICE 'Runtime (sec): %', (SELECT EXTRACT(EPOCH FROM clock_timestamp() - vstart_time));
+
+
+--normalize ani
+RAISE NOTICE 'Normalizing ANIs: %', clock_timestamp();
+vstart_time = clock_timestamp();
+update cdr_customer set ani = replace(ani, '+', '') where ani like '+%';
+update cdr_customer set ani = '1' || ani where length(ani) = 10 and juris in ('E', 'A', 'U');
+RAISE NOTICE 'Runtime (sec): %', (SELECT EXTRACT(EPOCH FROM clock_timestamp() - vstart_time));
+
+--normalize dnis
+RAISE NOTICE 'Normalizing DNISs: %', clock_timestamp();
+vstart_time = clock_timestamp();
+update cdr_customer set dnis = '1' || dnis where length(dnis) = 10 and juris in ('E', 'A', 'U');
+update cdr_customer set juris = 'TFT' where left(dnis, 4) in ('1800', '1822', '1844', '1855', '1866', '1877', '1888');
+RAISE NOTICE 'Runtime (sec): %', (SELECT EXTRACT(EPOCH FROM clock_timestamp() - vstart_time));
+
+--normalize lrn
+RAISE NOTICE 'Normalizing LRN: %', clock_timestamp();
+vstart_time = clock_timestamp();
+update cdr_customer set lrn = '1' || lrn where length(lrn) = 10 and juris in ('E', 'A', 'U');
+RAISE NOTICE 'Runtime (sec): %', (SELECT EXTRACT(EPOCH FROM clock_timestamp() - vstart_time));
+
+--populate billing_prefix if not sent. If not sent, we have to assume LRN-based billing with fallback to dnis-based billing.
+RAISE NOTICE 'Determining billing_prefix: %', clock_timestamp();
+vstart_time = clock_timestamp();
+update cdr_customer set billing_prefix = left(lrn, 7) where length(lrn) = 11 and billing_prefix is null and juris in ('E', 'A', 'U');
+update cdr_customer set billing_prefix = left(dnis, 7) where length(dnis) = 11 and billing_prefix is null and juris in ('E', 'A', 'U');
+update cdr_customer set billing_prefix = left(dnis, 4) where length(dnis) = 11 and billing_prefix is null and juris in ('TFT');
+RAISE NOTICE 'Runtime (sec): %', (SELECT EXTRACT(EPOCH FROM clock_timestamp() - vstart_time));
+
+--populate routing_prefix if not sent. If not sent, we have to assume LRN-based routing with fallback to dnis-based routing.
+RAISE NOTICE 'Determining routing_prefix: %', clock_timestamp();
+vstart_time = clock_timestamp();
+update cdr_customer set routing_prefix = left(lrn, 7) where length(lrn) = 11 and routing_prefix is null and juris in ('E', 'A', 'U');
+update cdr_customer set routing_prefix = left(dnis, 7) where length(dnis) = 11 and routing_prefix is null and juris in ('E', 'A', 'U');
+update cdr_customer set routing_prefix = left(dnis, 4) where length(dnis) = 11 and routing_prefix is null and juris in ('TFT');
+RAISE NOTICE 'Runtime (sec): %', (SELECT EXTRACT(EPOCH FROM clock_timestamp() - vstart_time));
+
+--populate duration_billed if not sent
+--TODO: Add code to pull billing intervals from customer deck if loaded.
+RAISE NOTICE 'Determining duration_billed: %', clock_timestamp();
+vstart_time = clock_timestamp();
+update cdr_customer set duration_billed = duration where duration_billed is null;
+RAISE NOTICE 'Runtime (sec): %', (SELECT EXTRACT(EPOCH FROM clock_timestamp() - vstart_time));
+
+--calculate customer_revenue if not supplied
+RAISE NOTICE 'Determining customer_revenue: %', clock_timestamp();
+vstart_time = clock_timestamp();
+update cdr_customer set customer_revenue = customer_rate * (duration_billed / 60) where customer_revenue is null;
+RAISE NOTICE 'Runtime (sec): %', (SELECT EXTRACT(EPOCH FROM clock_timestamp() - vstart_time));
+
+
+--TODO: Skip this section if lerg6 table does not exist or is empty.
+--create lerg6 table temp processing table.
+/* BETA
+RAISE NOTICE 'Create LERG6: %', clock_timestamp();
+vstart_time = clock_timestamp();
+drop table if exists tmp_lerg6;
+create temporary table tmp_lerg6 as select max(lata) as "lata", max(ocn) as "ocn", max(loc_state) as "state", max(switch) as "switch", '1' || npa || nxx || block_id as "prefix" from lerg6 where block_id <> 'A' group by npa, nxx, block_id;
+--TODO convert this to mat view with index to speed it up and not have to recreate it every time.
+alter table tmp_lerg6 add primary key (prefix);
+RAISE NOTICE 'Runtime (sec): %', (SELECT EXTRACT(EPOCH FROM clock_timestamp() - vstart_time));
+*/
+
+--create lerg6a table
+/* BETA
+RAISE NOTICE 'Create LERG6a: %', clock_timestamp();
+vstart_time = clock_timestamp();
+drop table if exists tmp_lerg6a;
+create temporary table tmp_lerg6a as select max(lata) as "lata", max(ocn) as "ocn", max(loc_state) as "state", max(switch) as "switch", '1' || npa || nxx as "prefix" from lerg6 where block_id = 'A' group by npa, nxx; 
+--TODO convert this to mat view with index to speed it up and not have to recreate it every time.
+alter table tmp_lerg6a add primary key (prefix);
+RAISE NOTICE 'Runtime (sec): %', (SELECT EXTRACT(EPOCH FROM clock_timestamp() - vstart_time));
+*/
+
+--retrieve lata
+/*BETA
+--TODO: lookup to setting to see if using lata statistics. Skip if not.
+RAISE NOTICE 'Determining LATA: %', clock_timestamp();
+vstart_time = clock_timestamp();
+update cdr_customer set dest_lata = (select lata::int from tmp_lerg6 where left(cdr_customer.lrn, 8) = tmp_lerg6.prefix)
+where cdr_customer.dest_lata is null and length(cdr_customer.lrn) = 11;
+
+update cdr_customer set dest_lata = (select lata::int from tmp_lerg6 where left(cdr_customer.dnis, 8) = tmp_lerg6.prefix)
+where cdr_customer.dest_lata is null and length(cdr_customer.dnis) = 11;
+
+update cdr_customer set dest_lata = (select lata::int from tmp_lerg6a where routing_prefix = tmp_lerg6a.prefix)
+where cdr_customer.dest_lata is null;
+RAISE NOTICE 'Runtime (sec): %', (SELECT EXTRACT(EPOCH FROM clock_timestamp() - vstart_time));
+*/
+
+--retrieve ocn
+--TODO: lookup to setting to see if using ocn statistics. skip if not.
+/* BETA
+RAISE NOTICE 'Determining OCN: %', clock_timestamp();
+vstart_time = clock_timestamp();
+update cdr_customer set dest_ocn = (select ocn from tmp_lerg6 where left(cdr_customer.lrn, 8) = tmp_lerg6.prefix)
+where cdr_customer.dest_ocn is null and length(cdr_customer.lrn) = 11;
+
+update cdr_customer set dest_ocn = (select ocn from tmp_lerg6 where left(cdr_customer.dnis, 8) = tmp_lerg6.prefix)
+where cdr_customer.dest_ocn is null and length(cdr_customer.dnis) = 11;
+
+update cdr_customer set dest_ocn = (select ocn from tmp_lerg6a where routing_prefix = tmp_lerg6a.prefix)
+where cdr_customer.dest_ocn is null;
+RAISE NOTICE 'Runtime (sec): %', (SELECT EXTRACT(EPOCH FROM clock_timestamp() - vstart_time));
+*/
+
+--retrieve state
+--TODO: lookup to setting to see if using state statistics. skip if not.
+/* BETA
+RAISE NOTICE 'Determining State: %', clock_timestamp();
+vstart_time = clock_timestamp();
+update cdr_customer set dest_state = (select state from tmp_lerg6 where left(cdr_customer.lrn, 8) = tmp_lerg6.prefix)
+where cdr_customer.dest_state is null and length(cdr_customer.lrn) = 11;
+
+update cdr_customer set dest_state = (select state from tmp_lerg6 where left(cdr_customer.dnis, 8) = tmp_lerg6.prefix)
+where cdr_customer.dest_state is null and length(cdr_customer.dnis) = 11;
+
+update cdr_customer set dest_state = (select state from tmp_lerg6a where routing_prefix = tmp_lerg6a.prefix)
+where cdr_customer.dest_state is null;
+RAISE NOTICE 'Runtime (sec): %', (SELECT EXTRACT(EPOCH FROM clock_timestamp() - vstart_time));
+*/
+
+--retrieve clli
+--TODO: lookup to setting to see if using clli statistics. Skip if not.
+--TODO: This block below is the biggest runtime. Need to find a better way to do it.
+/* BETA
+RAISE NOTICE 'Determining CLLI: %', clock_timestamp();
+vstart_time = clock_timestamp();
+update cdr_customer set dest_clli = (select switch from tmp_lerg6 where left(cdr_customer.lrn, 8) = tmp_lerg6.prefix)
+where cdr_customer.dest_clli is null and length(cdr_customer.lrn) = 11;
+RAISE NOTICE 'Runtime (sec): %', (SELECT EXTRACT(EPOCH FROM clock_timestamp() - vstart_time));
+
+vstart_time = clock_timestamp();
+update cdr_customer set dest_clli = (select switch from tmp_lerg6 where left(cdr_customer.dnis, 8) = tmp_lerg6.prefix)
+where cdr_customer.dest_clli is null and length(cdr_customer.dnis) = 11;
+RAISE NOTICE 'Runtime (sec): %', (SELECT EXTRACT(EPOCH FROM clock_timestamp() - vstart_time));
+
+vstart_time = clock_timestamp();
+update cdr_customer set dest_clli = (select switch from tmp_lerg6a where routing_prefix = tmp_lerg6a.prefix)
+where cdr_customer.dest_clli is null;
+RAISE NOTICE 'Runtime (sec): %', (SELECT EXTRACT(EPOCH FROM clock_timestamp() - vstart_time));
+*/
+
+	   
+--summarize rvm (BETA)
+/*
+RAISE NOTICE 'Determining RVM: %', clock_timestamp();
+vstart_time = clock_timestamp();
+create temporary table tmp_rvm as
+	select cdr.batch_id, date_trunc('minute', "call_time") as "minute", count(*) as "rvm" from cdr_customer as cdr inner join tmp_batches as tmp on tmp.batch_id = cdr.batch_id group by cdr.batch_id, date_trunc('minute', "call_time"), dnis having count(*) >= 2;
+
+drop table tmp_rvmsumm
+create temporary table tmp_rvmsumm as
+	select batch_id, "minute", sum(rvm) as "attempts_rvm" from tmp_rvm group by batch_id, "minute";
+--select * from tmp_rvmsumm
+RAISE NOTICE 'Runtime (sec): %', (SELECT EXTRACT(EPOCH FROM clock_timestamp() - vstart_time));
+*/
+
+--generate 1-min customer-side network agg
+--drop table agg_customer_network_1min
+--truncate table agg_customer_network_1min
+--create table agg_customer_network_1min as
+RAISE NOTICE 'Aggregating agg_customer_network_1min: %', clock_timestamp();
+vstart_time = clock_timestamp();
+delete from agg_customer_network_1min where batch_id in (select batch_id from tmp_batches);
+insert into agg_customer_network_1min
+	(batch_id, call_time, attempts, attempts_ner, attempts_acr, attempts_dcr, attempts_rvm, completions, duration, duration_billed, revenue, carrier_cost, sd, code_487, code_404, lcr_depth)
+select 
+cdr.batch_id
+, date_trunc('minute', min(call_time)) as "call_time"
+, count(*) as "attempts"
+, sum(case when sip_code like '4%' then 0 else 1 end) as "attempts_ner"
+, count(distinct(ani)) as "attempts_acr"
+, count(distinct(dnis)) as "attempts_dcr"
+, null as "attempts_rvm"
+, sum(case cdr.sip_code when '200' then 1 else 0 end) as "completions"
+, sum(duration) as "duration"
+, sum(duration_billed) as "duration_billed"
+, sum(customer_revenue) as "revenue"
+, sum(carrier_cost) as "carrier_cost"
+, sum(case when duration between 1 and 6 then 1 else 0 end) as "sd"
+, sum(case sip_code when '487' then 1 else 0 end) as "code_487"
+, sum(case sip_code when '404' then 1 else 0 end) as "code_404"
+, sum(lcr_depth) as "lcr_depth"
+	   from cdr_customer as cdr
+	   inner join tmp_batches as tmp on tmp.batch_id = cdr.batch_id
+	   group by cdr.batch_id, date_trunc('minute', "call_time");
+--select * from agg_customer_network_1min order by call_time desc limit 100000
+
+
+--update agg_customer_network_1min set attempts_rvm = (select attempts_rvm from tmp_rvmsumm as rvmsumm where --rvmsumm.batch_id = agg_customer_network_1min.batch_id and rvmsumm.minute = agg_customer_network_1min.call_time)
+--where batch_id in (select batch_id from tmp_batches);
+--RAISE NOTICE 'Runtime (sec): %', (SELECT EXTRACT(EPOCH FROM clock_timestamp() - vstart_time));
+
+
+--generate 1-min customer-side ani agg
+--drop table agg_customer_ani_1min
+--truncate table agg_customer_ani_1min
+--create table agg_customer_ani_1min as
+/*BETA
+RAISE NOTICE 'Aggregating agg_customer_ani_1min: %', clock_timestamp();
+vstart_time = clock_timestamp();
+delete from agg_customer_ani_1min where batch_id in (select batch_id from tmp_batches);
+insert into agg_customer_ani_1min
+	(batch_id, call_time, ani, attempts, attempts_ner, attempts_dcr, attempts_rvm, completions, duration, duration_billed, revenue, sd, code_487, code_404, lcr_depth)
+select 
+cdr.batch_id
+, date_trunc('minute', min(call_time)) as "call_time"
+, ani
+, count(*) as "attempts"
+, sum(case when sip_code like '4%' then 0 else 1 end) as "attempts_ner"
+, count(distinct(dnis)) as "attempts_dcr"
+, null as "attempts_rvm"
+, sum(case cdr.sip_code when '200' then 1 else 0 end) as "completions"
+, sum(duration) as "duration"
+, sum(duration_billed) as "duration_billed"
+, sum(revenue) as "revenue"
+, sum(case when duration between 1 and 6 then 1 else 0 end) as "sd"
+, sum(case sip_code when '487' then 1 else 0 end) as "code_487"
+, sum(case sip_code when '404' then 1 else 0 end) as "code_404"
+, sum(lcr_depth) as "lcr_depth"
+	   from cdr_customer as cdr
+	   inner join tmp_batches as tmp on tmp.batch_id = cdr.batch_id
+	   group by cdr.batch_id, date_trunc('minute', "call_time"), cdr.ani;
+--select * from agg_customer_ani_1min order by call_time desc limit 100000;
+--TODO: add ani RVM
+RAISE NOTICE 'Runtime (sec): %', (SELECT EXTRACT(EPOCH FROM clock_timestamp() - vstart_time));
+*/
+
+--generate 1-min customer-side switch_id agg
+--drop table agg_customer_switchid_1min
+--truncate table agg_customer_switchid_1min
+--create table agg_customer_switchid_1min as
+/* BETA
+RAISE NOTICE 'Aggregating agg_switchid_1min: %', clock_timestamp();
+vstart_time = clock_timestamp();
+delete from agg_customer_switchid_1min where batch_id in (select batch_id from tmp_batches);
+insert into agg_customer_switchid_1min
+	(batch_id, call_time, switch_id, attempts, attempts_ner, completions, duration, duration_billed, revenue, sd, code_487, code_404)
+select 
+cdr.batch_id
+, date_trunc('minute', min(call_time)) as "call_time"
+, switch_id
+, count(*) as "attempts"
+, sum(case when sip_code like '4%' then 0 else 1 end) as "attempts_ner"
+--, count(distinct(dnis)) as "attempts_dcr"
+--, null as "attempts_rvm"
+, sum(case cdr.sip_code when '200' then 1 else 0 end) as "completions"
+, sum(duration) as "duration"
+, sum(duration_billed) as "duration_billed"
+, sum(revenue) as "revenue"
+, sum(case when duration between 1 and 6 then 1 else 0 end) as "sd"
+, sum(case sip_code when '487' then 1 else 0 end) as "code_487"
+, sum(case sip_code when '404' then 1 else 0 end) as "code_404"
+	   from cdr_customer as cdr
+	   inner join tmp_batches as tmp on tmp.batch_id = cdr.batch_id
+	   group by cdr.batch_id, date_trunc('minute', "call_time"), cdr.switch_id;
+--select * from agg_customer_switchid_1min order by call_time desc limit 100000;
+RAISE NOTICE 'Runtime (sec): %', (SELECT EXTRACT(EPOCH FROM clock_timestamp() - vstart_time));
+*/
+
+
+--generate 1-min customer-side signalip agg
+--drop table agg_customer_signalip_1min
+--truncate table agg_customer_signalip_1min
+--create table agg_customer_signalip_1min as
+/* BETA
+RAISE NOTICE 'Aggregating agg_customer_signalip_1min: %', clock_timestamp();
+vstart_time = clock_timestamp();
+delete from agg_customer_signalip_1min where batch_id in (select batch_id from tmp_batches);
+insert into agg_customer_signalip_1min
+	(batch_id, call_time, signal_ip, tg_id, attempts, attempts_ner, attempts_acr, attempts_dcr, attempts_rvm, completions, duration, duration_billed, revenue, carrier_cost, sd, code_487, code_404)
+select 
+cdr.batch_id
+, date_trunc('minute', min(call_time)) as "call_time"
+, signal_ip
+, tg_id
+, count(*) as "attempts"
+, sum(case when sip_code like '4%' then 0 else 1 end) as "attempts_ner"
+, count(distinct(ani)) as "attempts_acr"
+, count(distinct(dnis)) as "attempts_dcr"
+, null as "attempts_rvm"
+, sum(case cdr.sip_code when '200' then 1 else 0 end) as "completions"
+, sum(duration) as "duration"
+, sum(duration_billed) as "duration_billed"
+, sum(revenue) as "revenue"
+, sum(carrier_cost) as "carrier_cost"
+, sum(case when duration between 1 and 6 then 1 else 0 end) as "sd"
+, sum(case sip_code when '487' then 1 else 0 end) as "code_487"
+, sum(case sip_code when '404' then 1 else 0 end) as "code_404"
+	   from cdr_customer as cdr
+	   inner join tmp_batches as tmp on tmp.batch_id = cdr.batch_id
+	   where signal_ip is not null
+	   group by cdr.batch_id, date_trunc('minute', "call_time"), signal_ip, tg_id;
+--select * from agg_customer_signalip_1min order by call_time desc limit 100000
+RAISE NOTICE 'Runtime (sec): %', (SELECT EXTRACT(EPOCH FROM clock_timestamp() - vstart_time));
+*/
+
+
+--generate 1-min customer-side mediaip agg
+--drop table agg_customer_mediaip_1min
+--truncate table agg_customer_mediaip_1min
+--create table agg_customer_mediaip_1min as
+/* BETA
+RAISE NOTICE 'Aggregating agg_customer_mediaip_1min: %', clock_timestamp();
+vstart_time = clock_timestamp();
+delete from agg_customer_mediaip_1min where batch_id in (select batch_id from tmp_batches);
+insert into agg_customer_mediaip_1min
+	(batch_id, call_time, media_ip, attempts, attempts_ner, attempts_acr, attempts_dcr, attempts_rvm, completions, duration, duration_billed, revenue, sd, code_487, code_404)
+select 
+cdr.batch_id
+, date_trunc('minute', min(call_time)) as "call_time"
+, media_ip
+, count(*) as "attempts"
+, sum(case when sip_code like '4%' then 0 else 1 end) as "attempts_ner"
+, count(distinct(ani)) as "attempts_acr"
+, count(distinct(dnis)) as "attempts_dcr"
+, null as "attempts_rvm"
+, sum(case cdr.sip_code when '200' then 1 else 0 end) as "completions"
+, sum(duration) as "duration"
+, sum(duration_billed) as "duration_billed"
+, sum(revenue) as "revenue"
+, sum(case when duration between 1 and 6 then 1 else 0 end) as "sd"
+, sum(case sip_code when '487' then 1 else 0 end) as "code_487"
+, sum(case sip_code when '404' then 1 else 0 end) as "code_404"
+	   from cdr_customer as cdr
+	   inner join tmp_batches as tmp on tmp.batch_id = cdr.batch_id
+	   where media_ip is not null
+	   group by cdr.batch_id, date_trunc('minute', "call_time"), media_ip;
+--select * from agg_customer_mediaip_1min order by call_time desc limit 100000
+RAISE NOTICE 'Runtime (sec): %', (SELECT EXTRACT(EPOCH FROM clock_timestamp() - vstart_time));
+*/
+
+--generate 1-min network-wide sip code agg
+--drop table agg_customer_network_sipcode_1min
+--create table agg_customer_network_sipcode_1min as
+/* BETA
+RAISE NOTICE 'Aggregating agg_customer_network_sipcode_1min: %', clock_timestamp();
+vstart_time = clock_timestamp();
+delete from agg_customer_network_sipcode_1min where batch_id in (select batch_id from tmp_batches);
+insert into agg_customer_network_sipcode_1min
+	(batch_id, call_time, sip_code, attempts)
+select 
+cdr.batch_id
+, date_trunc('minute', min(call_time)) as "call_time"
+, sip_code
+, count(*) as "attempts"
+	   from cdr_customer as cdr
+	   inner join tmp_batches as tmp on tmp.batch_id = cdr.batch_id
+	   group by cdr.batch_id, date_trunc('minute', "call_time"), sip_code;
+--select * from agg_customer_network_sipcode_1min order by call_time desc limit 100000;
+--select sip_code from agg_customer_network_sipcode_1min group by sip_code order by count(*) desc
+RAISE NOTICE 'Runtime (sec): %', (SELECT EXTRACT(EPOCH FROM clock_timestamp() - vstart_time));
+*/
+
+
+--generate tg 1-min agg
+--drop table agg_customer_tg_1min
+--create table agg_customer_tg_1min as
+/* BETA
+RAISE NOTICE 'Aggregating agg_customer_tg_1min: %', clock_timestamp();
+vstart_time = clock_timestamp();
+delete from agg_customer_tg_1min where batch_id in (select batch_id from tmp_batches);
+insert into agg_customer_tg_1min (batch_id, call_time, tg_id, attempts, completions, duration, duration_billed, revenue, sd, code_487, code_404
+								  , lcr_depth_completed, lcr_depth_incomplete, lcr_depth_all, lack_cap, ring_time, ring_time_before_cancel,
+								 attempts_npr, carrier_cost)
+select cdr.batch_id
+, date_trunc('minute', min(call_time)) as "call_time"
+, tg_id
+, count(*) as "attempts"
+, sum(case cdr.sip_code when '200' then 1 else 0 end) as "completions"
+, sum(duration) as "duration"
+, sum(duration_billed) as "duration_billed"
+, sum(revenue) as "revenue"
+, sum(case when duration between 1 and 6 then 1 else 0 end) as "sd"
+, sum(case sip_code when '487' then 1 else 0 end) as "code_487"
+, sum(case sip_code when '404' then 1 else 0 end) as "code_404"
+, sum(case duration when 0 then null else lcr_depth end) as "lcr_depth_completed"
+, sum(case duration when 0 then lcr_depth else null end) as "lcr_depth_incomplete"
+, sum(lcr_depth) as "lcr_depth_all"
+, sum(case sip_code when '521' then 1 when '523' then 1 when '525' then 1 when '533' then 1 else 0 end) as "lack_cap"
+, sum(ring_time) as "ring_time"
+, sum(case sip_code when '487' then ring_time else null end) as "ring_time_before_cancel"
+, sum(case sip_code when 'NPR' then 1 else 0 end) as "attempts_npr"
+, sum(carrier_cost) as "carrier_cost"
+	   from cdr_customer as cdr
+	   inner join tmp_batches as tmp on tmp.batch_id = cdr.batch_id
+	   group by cdr.batch_id, date_trunc('minute', "call_time"), tg_id;
+	   
+	   --select * from agg_customer_tg_1min order by call_time desc limit 100000;
+RAISE NOTICE 'Runtime (sec): %', (SELECT EXTRACT(EPOCH FROM clock_timestamp() - vstart_time));
+*/
+
+--generate customer lata 1-min agg
+--drop table agg_customer_lata_1min
+--create table agg_customer_lata_1min as
+/* BETA
+RAISE NOTICE 'Aggregating agg_customer_lata_1min: %', clock_timestamp();
+vstart_time = clock_timestamp();
+delete from agg_customer_lata_1min where batch_id in (select batch_id from tmp_batches);
+insert into agg_customer_lata_1min (batch_id, call_time, dest_lata, attempts, completions, duration, duration_billed, revenue)
+select cdr.batch_id
+, date_trunc('minute', min(call_time)) as "call_time"
+, dest_lata
+, count(*) as "attempts"
+, sum(case cdr.sip_code when '200' then 1 else 0 end) as "completions"
+, sum(duration) as "duration"
+, sum(duration_billed) as "duration_billed"
+, sum(revenue) as "revenue"
+--, sum(case when duration between 1 and 6 then 1 else 0 end)
+--, sum(case sip_code when '487' then 1 else 0 end)
+--, sum(case sip_code when '404' then 1 else 0 end)
+	   from cdr_customer as cdr
+	   inner join tmp_batches as tmp on tmp.batch_id = cdr.batch_id
+	   where dest_lata >= 1
+	   group by cdr.batch_id, date_trunc('minute', "call_time"), dest_lata;
+	   
+	   --select * from agg_customer_lata_1min order by call_time desc limit 100000;
+RAISE NOTICE 'Runtime (sec): %', (SELECT EXTRACT(EPOCH FROM clock_timestamp() - vstart_time));
+*/
+
+--generate customer ocn 1-min agg
+--drop table agg_customer_ocn_1min
+--create table agg_customer_ocn_1min as
+/*
+RAISE NOTICE 'Aggregating agg_customer_ocn_1min: %', clock_timestamp();
+vstart_time = clock_timestamp();
+delete from agg_customer_ocn_1min where batch_id in (select batch_id from tmp_batches);
+insert into agg_customer_ocn_1min (batch_id, call_time, dest_ocn, attempts, completions, duration, duration_billed, revenue)
+select cdr.batch_id
+, date_trunc('minute', min(call_time)) as "call_time"
+, dest_ocn
+, count(*) as "attempts"
+, sum(case cdr.sip_code when '200' then 1 else 0 end) as "completions"
+, sum(duration) as "duration"
+, sum(duration_billed) as "duration_billed"
+, sum(revenue) as "revenue"
+--, sum(case when duration between 1 and 6 then 1 else 0 end)
+--, sum(case sip_code when '487' then 1 else 0 end)
+--, sum(case sip_code when '404' then 1 else 0 end)
+	   from cdr_customer as cdr
+	   inner join tmp_batches as tmp on tmp.batch_id = cdr.batch_id
+	   group by cdr.batch_id, date_trunc('minute', "call_time"), dest_ocn;
+	   
+	   --select * from agg_customer_ocn_1min order by call_time desc limit 100000;
+RAISE NOTICE 'Runtime (sec): %', (SELECT EXTRACT(EPOCH FROM clock_timestamp() - vstart_time));
+*/
+
+--generate customer state 1-min agg
+--drop table agg_customer_state_1min
+--create table agg_customer_state_1min as
+/* BETA
+RAISE NOTICE 'Aggregating agg_customer_state_1min: %', clock_timestamp();
+vstart_time = clock_timestamp();
+delete from agg_customer_state_1min where batch_id in (select batch_id from tmp_batches);
+insert into agg_customer_state_1min (batch_id, call_time, dest_state, attempts, completions, duration, duration_billed, revenue)
+select cdr.batch_id
+, date_trunc('minute', min(call_time)) as "call_time"
+, coalesce(dest_state, 'XX') as "dest_state"
+, count(*) as "attempts"
+, sum(case cdr.sip_code when '200' then 1 else 0 end) as "completions"
+, sum(duration) as "duration"
+, sum(duration_billed) as "duration_billed"
+, sum(revenue) as "revenue"
+--, sum(case when duration between 1 and 6 then 1 else 0 end)
+--, sum(case sip_code when '487' then 1 else 0 end)
+--, sum(case sip_code when '404' then 1 else 0 end)
+	   from cdr_customer as cdr
+	   inner join tmp_batches as tmp on tmp.batch_id = cdr.batch_id
+	   group by cdr.batch_id, date_trunc('minute', "call_time"), dest_state;
+	   
+	   --select * from agg_customer_state_1min order by call_time desc limit 100000;
+RAISE NOTICE 'Runtime (sec): %', (SELECT EXTRACT(EPOCH FROM clock_timestamp() - vstart_time));
+*/
+
+
+--generate customer clli 1-min agg
+--truncate table agg_customer_clli_1min
+--create table agg_customer_clli_1min as
+/* BETA
+RAISE NOTICE 'Aggregating agg_customer_clli_1min: %', clock_timestamp();
+vstart_time = clock_timestamp();
+delete from agg_customer_clli_1min where batch_id in (select batch_id from tmp_batches);
+insert into agg_customer_clli_1min (batch_id, call_time, dest_clli, attempts, completions, duration, duration_billed, revenue)
+select cdr.batch_id
+, date_trunc('minute', min(call_time)) as "call_time"
+, coalesce(dest_clli, 'XX') as "dest_clli"
+, count(*) as "attempts"
+, sum(case cdr.sip_code when '200' then 1 else 0 end) as "completions"
+, sum(duration) as "duration"
+, sum(duration_billed) as "duration_billed"
+, sum(revenue) as "revenue"
+--, sum(case when duration between 1 and 6 then 1 else 0 end)
+--, sum(case sip_code when '487' then 1 else 0 end)
+--, sum(case sip_code when '404' then 1 else 0 end)
+	   from cdr_customer as cdr
+	   inner join tmp_batches as tmp on tmp.batch_id = cdr.batch_id
+	   group by cdr.batch_id, date_trunc('minute', "call_time"), dest_clli;
+	   
+	   --select * from agg_customer_clli_1min order by call_time desc limit 100000;
+RAISE NOTICE 'Runtime (sec): %', (SELECT EXTRACT(EPOCH FROM clock_timestamp() - vstart_time));
+*/
+
+--generate tg prefix 1-min agg
+--create table agg_customer_tg_prefix_1min as
+/* BETA
+RAISE NOTICE 'Aggregating agg_customer_prefix_1min: %', clock_timestamp();
+vstart_time = clock_timestamp();
+delete from agg_customer_tg_prefix_1min where batch_id in (select batch_id from tmp_batches);
+insert into agg_customer_tg_prefix_1min (batch_id, call_time, tg_id, routing_prefix, attempts, completions, lcr_depth)
+select cdr.batch_id
+, date_trunc('minute', min(call_time)) as "call_time"
+, tg_id
+, routing_prefix
+, count(*) as "attempts"
+, sum(case cdr.sip_code when '200' then 1 else 0 end) as "completions"
+, sum(lcr_depth) as "lcr_depth"
+		--, sum(duration) as "duration"
+	   --, sum(duration_billed) as "duration_billed"
+	   --, sum(revenue) as "revenue"
+	   --sum(case when duration between 1 and 6 then 1 else 0 end) as "sdr"
+	   --sum(case sip_code when '487' then 1 else 0 end) as "code_",
+	   --sum(case sip_code when '404' then 1 else 0 end)
+	   from cdr_customer as cdr
+	   inner join tmp_batches as tmp on tmp.batch_id = cdr.batch_id
+	   group by cdr.batch_id, date_trunc('minute', "call_time"), tg_id, routing_prefix;
+	   
+	   --select * from agg_customer_tg_prefix_1min order by call_time desc limit 100000;
+RAISE NOTICE 'Runtime (sec): %', (SELECT EXTRACT(EPOCH FROM clock_timestamp() - vstart_time));
+*/
+
+--generate tg prefix/juris 1-min agg
+--create table agg_customer_tg_prefix_juris_1min as
+/* BETA
+RAISE NOTICE 'Aggregating agg_customer_prefix_juris_1min: %', clock_timestamp();
+vstart_time = clock_timestamp();
+delete from agg_customer_tg_prefix_juris_1min where batch_id in (select batch_id from tmp_batches);
+insert into agg_customer_tg_prefix_juris_1min (batch_id, call_time, tg_id, routing_prefix, juris, attempts, completions, lcr_depth)
+select cdr.batch_id
+, date_trunc('minute', min(call_time)) as "call_time"
+, tg_id, routing_prefix
+, juris, count(*) as "attempts"
+, sum(case cdr.sip_code when '200' then 1 else 0 end) as "completions"
+		--, sum(duration) as "duration"
+	   --, sum(duration_billed) as "duration_billed"
+	   --, sum(revenue) as "revenue"
+	   --sum(case when duration between 1 and 6 then 1 else 0 end) as "sdr"
+	   --sum(case sip_code when '487' then 1 else 0 end) as "code_",
+	   --sum(case sip_code when '404' then 1 else 0 end)
+, sum(lcr_depth) as "lcr_depth"	   
+	   from cdr_customer as cdr
+	   inner join tmp_batches as tmp on tmp.batch_id = cdr.batch_id
+	   group by cdr.batch_id, date_trunc('minute', "call_time"), tg_id, routing_prefix, juris;
+	   
+	   --select * from agg_customer_tg_prefix_juris_1min order by call_time desc limit 100000;
+RAISE NOTICE 'Runtime (sec): %', (SELECT EXTRACT(EPOCH FROM clock_timestamp() - vstart_time));
+*/
+
+
+
+--record bad numbers (404)
+--TODO: Add code to reset the expires_at instead of just appending a second enty of same number.
+/* BETA
+RAISE NOTICE 'Aggregating bad_numbers: %', clock_timestamp();
+vstart_time = clock_timestamp();
+insert into bad_numbers (dnis, created_at, expires_at)
+	select dnis, now(), now() + interval '10' day
+	from cdr_customer as cdr
+	inner join tmp_batches as tmp on tmp.batch_id = cdr.batch_id
+	where sip_code = '404'
+	group by dnis;
+	
+	--select * from bad_numbers order by created_at desc limit 100000;
+RAISE NOTICE 'Runtime (sec): %', (SELECT EXTRACT(EPOCH FROM clock_timestamp() - vstart_time));
+*/
+
+--close off the batch. KEEP AT BOTTOM
+--create table agg_customer_batch as
+RAISE NOTICE 'Aggregating agg_customer_batch: %', clock_timestamp();
+vstart_time = clock_timestamp();
+insert into agg_customer_batch (batch_id, attempts, completions, duration, duration_billed, revenue, sd, code_487, code_404, start_time, end_time, most_recent_cdr)
+select cdr.batch_id
+, count(*) as "attempts"
+, sum(case cdr.sip_code when '200' then 1 else 0 end) as "completions"
+, sum(duration) as "duration"
+, sum(duration_billed) as "duration_billed"
+, sum(cdr.customer_revenue) as "revenue"
+, sum(case when duration between 1 and 6 then 1 else 0 end)
+, sum(case sip_code when '487' then 1 else 0 end)
+, sum(case sip_code when '404' then 1 else 0 end)
+, now()
+, clock_timestamp()
+, max(call_time) as "most_recent_cdr"
+	   from cdr_customer as cdr
+	   inner join tmp_batches as tmp on tmp.batch_id = cdr.batch_id
+	   group by cdr.batch_id;
+--select * from agg_customer_batch order by processed_time desc;
+RAISE NOTICE 'Runtime (sec): %', (SELECT EXTRACT(EPOCH FROM clock_timestamp() - vstart_time));
+
+
+RAISE NOTICE 'Create customer TGs that don''t already exist: %', clock_timestamp();
+vstart_time = clock_timestamp();
+insert into trunk_groups_customer (tg_id, status)
+select tg_id, 'new' from cdr_customer where tg_id not in (select tg_id from trunk_groups_customer) group by tg_id;
+RAISE NOTICE 'Runtime (sec): %', (SELECT EXTRACT(EPOCH FROM clock_timestamp() - vstart_time));
+--select * from trunk_groups_customer order by created_at desc
+
+RAISE NOTICE 'Create signal IPs that don''t already exist: %', clock_timestamp();
+vstart_time = clock_timestamp();
+insert into signal_ips_customer (signal_ip, tg_id)
+select signal_ip, tg_id from cdr_customer where signal_ip || tg_id not in (select signal_ip || tg_id from signal_ips_customer) group by signal_ip, tg_id;
+RAISE NOTICE 'Runtime (sec): %', (SELECT EXTRACT(EPOCH FROM clock_timestamp() - vstart_time));
+--select * from signal_ips_customer order by created_at desc
+
+
+
+
+--TODO: purge batches we have processed
+RAISE NOTICE 'Deleting processed batch: %', clock_timestamp();
+vstart_time = clock_timestamp();
+delete from cdr_customer where batch_id in (select batch_id from tmp_batches) and batch_id != 'CDR_REVIEW';
+RAISE NOTICE 'Runtime (sec): %', (SELECT EXTRACT(EPOCH FROM clock_timestamp() - vstart_time));
+
+--TODO: concurrent refresh of today agg. maybe do on timer. unsure. pull from settings table.
+
+--refresh today if configured to do so.
+/* BETA
+--insert into settings (setting_name, setting_value) values ('refresh_daily_per_batch', 'true');
+if (select setting_value from settings where setting_name = 'refresh_daily_per_batch') = 'true' then
+	vstart_time = clock_timestamp();
+	RAISE NOTICE 'Refreshing today''s stats: %', clock_timestamp();
+	PERFORM public.fnmaintenance_refresh_today();
+	RAISE NOTICE 'Runtime (sec): %', (SELECT EXTRACT(EPOCH FROM clock_timestamp() - vstart_time));
+else
+	RAISE NOTICE 'Skipping today''s stats: %', clock_timestamp();
+end if;
+*/
+
+--refresh daily if configured to do so.
+/* BETA
+if (select setting_value from settings where setting_name = 'refresh_daily_per_batch') = 'true' then
+	vstart_time = clock_timestamp();
+	RAISE NOTICE 'Refreshing daily stats: %', clock_timestamp();
+	PERFORM public.fnmaintenance_refresh_daily();
+	RAISE NOTICE 'Runtime (sec): %', (SELECT EXTRACT(EPOCH FROM clock_timestamp() - vstart_time));
+else
+	RAISE NOTICE 'Skipping daily stats: %', clock_timestamp();
+end if;
+*/
+
+RAISE NOTICE 'DONE: %', clock_timestamp();
+
+--vacuum (full, analyze);
+
+END;
+$BODY$;
+
+ALTER FUNCTION public.fnprocess_cdr_customer(text)
+    OWNER TO postgres;
