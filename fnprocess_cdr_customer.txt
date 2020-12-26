@@ -9,26 +9,28 @@
 
 
 --DEPENDENCIES--
---1. Table: agg_customer_batch
---2. Table: cdr_customer
---3. Table: lerg6 (BETA)
---4. Table: agg_customer_network_1min
---5. Table: agg_customer_ani_1min  (BETA)
---6. Table: agg_customer_switchid_1min  (BETA)
---7. Table: agg_customer_signalip_1min  (BETA)
---8. Table: agg_customer_mediaip_1min  (BETA)
---9. Table: agg_customer_network_sipcode_1min  (BETA)
---10. Table: agg_customer_tg_1min  (BETA)
---11. Table: agg_customer_lata_1min  (BETA)
---12. Table: agg_customer_ocn_1min  (BETA)
---13. Table: agg_customer_state_1min  (BETA)
---14. Table: agg_customer_clli_1min  (BETA)
---15. Table: agg_customer_tg_prefix_1min  (BETA)
---16. Table: agg_customer_tg_prefix_juris_1min  (BETA)
---17. Table: bad_numbers  (BETA)
---18. Table: settings (BETA)
---19. Table: trunk_groups_customer
---20. Table: signal_ips_customer
+--Table: agg_customer_batch
+--Table: cdr_customer
+--Table: agg_customer_network_1min
+--Table: agg_customer_network_hourly
+--Table: trunk_groups_customer
+--Table: signal_ips_customer
+--Table: lerg6 (BETA)
+--Table: agg_customer_ani_1min  (BETA)
+--Table: agg_customer_switchid_1min  (BETA)
+--Table: agg_customer_signalip_1min  (BETA)
+--Table: agg_customer_mediaip_1min  (BETA)
+--Table: agg_customer_network_sipcode_1min  (BETA)
+--Table: agg_customer_tg_1min  (BETA)
+--Table: agg_customer_lata_1min  (BETA)
+--Table: agg_customer_ocn_1min  (BETA)
+--Table: agg_customer_state_1min  (BETA)
+--Table: agg_customer_clli_1min  (BETA)
+--Table: agg_customer_tg_prefix_1min  (BETA)
+--Table: agg_customer_tg_prefix_juris_1min  (BETA)
+--Table: bad_numbers  (BETA)
+--Table: settings (BETA)
+
 
 
 
@@ -83,6 +85,7 @@ RAISE NOTICE 'Runtime (sec): %', (SELECT EXTRACT(EPOCH FROM clock_timestamp() - 
 RAISE NOTICE 'BatchID: %', (select batch_id from tmp_batches limit 1);
 
 if (select batch_id from tmp_batches limit 1) is null then
+	--select * from tmp_batches;
 	RAISE NOTICE 'No batches found to process. Exiting';
 	return;
 end if;
@@ -291,6 +294,35 @@ cdr.batch_id
 	   inner join tmp_batches as tmp on tmp.batch_id = cdr.batch_id
 	   group by cdr.batch_id, date_trunc('minute', "call_time");
 --select * from agg_customer_network_1min order by call_time desc limit 100000
+
+
+RAISE NOTICE 'Aggregating agg_customer_network_hourly: %', clock_timestamp();
+vstart_time = clock_timestamp();
+delete from agg_customer_network_hourly where batch_id in (select batch_id from tmp_batches);
+insert into agg_customer_network_hourly
+	(batch_id, call_time, attempts, attempts_ner, attempts_acr, attempts_dcr, attempts_rvm, completions, duration, duration_billed, revenue, carrier_cost, sd, code_487, code_404, lcr_depth)
+select 
+agg.batch_id
+, date_trunc('hour', min(call_time)) as "call_time"
+, sum(attempts) as "attempts"
+, sum(attempts_ner) as "attempts_ner"
+, count(attempts_acr) as "attempts_acr"
+, count(attempts_dcr) as "attempts_dcr"
+, sum(attempts_rvm) as "attempts_rvm"
+, sum(completions) as "completions"
+, sum(duration) as "duration"
+, sum(duration_billed) as "duration_billed"
+, sum(revenue) as "revenue"
+, sum(carrier_cost) as "carrier_cost"
+, sum(sd) as "sd"
+, sum(code_487) as "code_487"
+, sum(code_404) as "code_404"
+, sum(lcr_depth) as "lcr_depth"
+	   from agg_customer_network_1min as agg
+	   inner join tmp_batches as tmp on tmp.batch_id = agg.batch_id
+	   group by agg.batch_id, date_trunc('hour', "call_time");
+--select * from agg_customer_network_hourly order by call_time desc limit 100000
+
 
 
 --update agg_customer_network_1min set attempts_rvm = (select attempts_rvm from tmp_rvmsumm as rvmsumm where --rvmsumm.batch_id = agg_customer_network_1min.batch_id and rvmsumm.minute = agg_customer_network_1min.call_time)
