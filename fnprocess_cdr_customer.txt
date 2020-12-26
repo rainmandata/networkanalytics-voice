@@ -9,12 +9,13 @@
 
 
 --DEPENDENCIES--
+--Table: trunk_groups_customer
+--Table: signal_ips_customer
 --Table: agg_customer_batch
 --Table: cdr_customer
 --Table: agg_customer_network_1min
 --Table: agg_customer_network_hourly
---Table: trunk_groups_customer
---Table: signal_ips_customer
+--Table: agg_customer_network_daily
 --Table: lerg6 (BETA)
 --Table: agg_customer_ani_1min  (BETA)
 --Table: agg_customer_switchid_1min  (BETA)
@@ -322,6 +323,34 @@ agg.batch_id
 	   inner join tmp_batches as tmp on tmp.batch_id = agg.batch_id
 	   group by agg.batch_id, date_trunc('hour', "call_time");
 --select * from agg_customer_network_hourly order by call_time desc limit 100000
+
+
+RAISE NOTICE 'Aggregating agg_customer_network_daily: %', clock_timestamp();
+vstart_time = clock_timestamp();
+delete from agg_customer_network_daily where batch_id in (select batch_id from tmp_batches);
+insert into agg_customer_network_daily
+	(batch_id, call_time, attempts, attempts_ner, attempts_acr, attempts_dcr, attempts_rvm, completions, duration, duration_billed, revenue, carrier_cost, sd, code_487, code_404, lcr_depth)
+select 
+agg.batch_id
+, date_trunc('day', min(call_time)) as "call_time"
+, sum(attempts) as "attempts"
+, sum(attempts_ner) as "attempts_ner"
+, count(attempts_acr) as "attempts_acr"
+, count(attempts_dcr) as "attempts_dcr"
+, sum(attempts_rvm) as "attempts_rvm"
+, sum(completions) as "completions"
+, sum(duration) as "duration"
+, sum(duration_billed) as "duration_billed"
+, sum(revenue) as "revenue"
+, sum(carrier_cost) as "carrier_cost"
+, sum(sd) as "sd"
+, sum(code_487) as "code_487"
+, sum(code_404) as "code_404"
+, sum(lcr_depth) as "lcr_depth"
+	   from agg_customer_network_hourly as agg
+	   inner join tmp_batches as tmp on tmp.batch_id = agg.batch_id
+	   group by agg.batch_id, date_trunc('day', "call_time");
+--select * from agg_customer_network_daily order by call_time desc limit 100000
 
 
 
