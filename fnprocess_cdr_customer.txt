@@ -18,6 +18,7 @@
 --Table: agg_customer_network_daily
 --Table: agg_customer_network_sipcode_1min
 --Table: agg_customer_network_sipcode_hourly
+--Table: agg_customer_network_sipcode_daily
 --Table: lerg6 (BETA)
 --Table: agg_customer_ani_1min  (BETA)
 --Table: agg_customer_switchid_1min  (BETA)
@@ -498,10 +499,7 @@ cdr.batch_id
 RAISE NOTICE 'Runtime (sec): %', (SELECT EXTRACT(EPOCH FROM clock_timestamp() - vstart_time));
 */
 
---generate 1-min network-wide sip code agg
---drop table agg_customer_network_sipcode_1min
---create table agg_customer_network_sipcode_1min as
-
+--generate customer network-wide sip code aggs
 RAISE NOTICE 'Aggregating agg_customer_network_sipcode_1min: %', clock_timestamp();
 vstart_time = clock_timestamp();
 delete from agg_customer_network_sipcode_1min where batch_id in (select batch_id from tmp_batches);
@@ -527,15 +525,33 @@ insert into agg_customer_network_sipcode_hourly
 	(batch_id, call_time, sip_code, attempts)
 select 
 agg.batch_id
-, date_trunc('minute', min(call_time)) as "call_time"
+, date_trunc('hour', min(call_time)) as "call_time"
 , sip_code
 , sum(attempts) as "attempts"
 	   from agg_customer_network_sipcode_1min as agg
 	   inner join tmp_batches as tmp on tmp.batch_id = agg.batch_id
-	   group by agg.batch_id, date_trunc('minute', "call_time"), sip_code;
+	   group by agg.batch_id, date_trunc('hour', "call_time"), sip_code;
 --select * from agg_customer_network_sipcode_hourly order by call_time desc limit 100000;
 --select sip_code from agg_customer_network_sipcode_hourly group by sip_code order by count(*) desc
 RAISE NOTICE 'Runtime (sec): %', (SELECT EXTRACT(EPOCH FROM clock_timestamp() - vstart_time));
+
+RAISE NOTICE 'Aggregating agg_customer_network_sipcode_daily: %', clock_timestamp();
+vstart_time = clock_timestamp();
+delete from agg_customer_network_sipcode_daily where batch_id in (select batch_id from tmp_batches);
+insert into agg_customer_network_sipcode_daily
+	(batch_id, call_time, sip_code, attempts)
+select 
+agg.batch_id
+, date_trunc('day', min(call_time)) as "call_time"
+, sip_code
+, sum(attempts) as "attempts"
+	   from agg_customer_network_sipcode_hourly as agg
+	   inner join tmp_batches as tmp on tmp.batch_id = agg.batch_id
+	   group by agg.batch_id, date_trunc('day', "call_time"), sip_code;
+--select * from agg_customer_network_sipcode_daily order by call_time desc limit 100000;
+--select sip_code from agg_customer_network_sipcode_daily group by sip_code order by count(*) desc
+RAISE NOTICE 'Runtime (sec): %', (SELECT EXTRACT(EPOCH FROM clock_timestamp() - vstart_time));
+
 
 
 --generate tg 1-min agg
