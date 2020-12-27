@@ -16,12 +16,12 @@
 --Table: agg_customer_network_1min
 --Table: agg_customer_network_hourly
 --Table: agg_customer_network_daily
+--Table: agg_customer_network_sipcode_1min
 --Table: lerg6 (BETA)
 --Table: agg_customer_ani_1min  (BETA)
 --Table: agg_customer_switchid_1min  (BETA)
 --Table: agg_customer_signalip_1min  (BETA)
 --Table: agg_customer_mediaip_1min  (BETA)
---Table: agg_customer_network_sipcode_1min  (BETA)
 --Table: agg_customer_tg_1min  (BETA)
 --Table: agg_customer_lata_1min  (BETA)
 --Table: agg_customer_ocn_1min  (BETA)
@@ -500,7 +500,7 @@ RAISE NOTICE 'Runtime (sec): %', (SELECT EXTRACT(EPOCH FROM clock_timestamp() - 
 --generate 1-min network-wide sip code agg
 --drop table agg_customer_network_sipcode_1min
 --create table agg_customer_network_sipcode_1min as
-/* BETA
+
 RAISE NOTICE 'Aggregating agg_customer_network_sipcode_1min: %', clock_timestamp();
 vstart_time = clock_timestamp();
 delete from agg_customer_network_sipcode_1min where batch_id in (select batch_id from tmp_batches);
@@ -517,7 +517,7 @@ cdr.batch_id
 --select * from agg_customer_network_sipcode_1min order by call_time desc limit 100000;
 --select sip_code from agg_customer_network_sipcode_1min group by sip_code order by count(*) desc
 RAISE NOTICE 'Runtime (sec): %', (SELECT EXTRACT(EPOCH FROM clock_timestamp() - vstart_time));
-*/
+
 
 
 --generate tg 1-min agg
