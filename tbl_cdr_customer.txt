@@ -12,7 +12,7 @@
 --FOLLOW NUMBERED STEPS--
 
 --1. Only required if replacing previous version.
-DROP TABLE public.cdr_customer
+DROP TABLE public.cdr_customer;
 
 --2. Required.
 CREATE UNLOGGED TABLE public.cdr_customer
@@ -22,6 +22,9 @@ CREATE UNLOGGED TABLE public.cdr_customer
 switch_id text not null, --Required. UniqueID on the internal device that received the ingress attempt. The switch IP is perfectly viable as a value.
     tg_id text NOT NULL, --Required. Value that identifies the customer's trunk group.
     ani text, --Optional. Normalized ANI including country code. Required if using our ANI-based statistics.
+    ani_lata integer, --Optional. Used for LATA-based statistics. If it is not in your CDR but you have LERG we can dip it from there. 
+    ani_ocn text, --Optional. Used for OCN-based statistics. If it is not in your CDR but you have LERG we can dip it from there.
+ani_state text, --Optional. Used for State/Province-based statistics. If it is not in your CDR but you have LERG we can dip it from there. 
     dnis text, --Optional. Normalized DNIS including country code. Required if using our DNIS-based statistics.
     lrn text, --Optional. Local Routing Number for the call.
     dnis_lata integer, --Optional. Used for LATA-based statistics. If it is not in your CDR but you have LERG we can dip it from there. 
