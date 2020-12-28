@@ -19,12 +19,14 @@
 --Table: agg_customer_network_sipcode_1min
 --Table: agg_customer_network_sipcode_hourly
 --Table: agg_customer_network_sipcode_daily
+--Table: agg_customer_tg_1min 
+--Table: agg_customer_tg_hourly
+--Table: agg_customer_tg_daily
 --Table: lerg6 (BETA)
 --Table: agg_customer_ani_1min  (BETA)
 --Table: agg_customer_switchid_1min  (BETA)
 --Table: agg_customer_signalip_1min  (BETA)
 --Table: agg_customer_mediaip_1min  (BETA)
---Table: agg_customer_tg_1min  (BETA)
 --Table: agg_customer_lata_1min  (BETA)
 --Table: agg_customer_ocn_1min  (BETA)
 --Table: agg_customer_state_1min  (BETA)
@@ -557,7 +559,7 @@ RAISE NOTICE 'Runtime (sec): %', (SELECT EXTRACT(EPOCH FROM clock_timestamp() - 
 --generate tg 1-min agg
 --drop table agg_customer_tg_1min
 --create table agg_customer_tg_1min as
-/* BETA
+
 RAISE NOTICE 'Aggregating agg_customer_tg_1min: %', clock_timestamp();
 vstart_time = clock_timestamp();
 delete from agg_customer_tg_1min where batch_id in (select batch_id from tmp_batches);
@@ -571,7 +573,7 @@ select cdr.batch_id
 , sum(case cdr.sip_code when '200' then 1 else 0 end) as "completions"
 , sum(duration) as "duration"
 , sum(duration_billed) as "duration_billed"
-, sum(revenue) as "revenue"
+, sum(customer_revenue) as "revenue"
 , sum(case when duration between 1 and 6 then 1 else 0 end) as "sd"
 , sum(case sip_code when '487' then 1 else 0 end) as "code_487"
 , sum(case sip_code when '404' then 1 else 0 end) as "code_404"
@@ -589,7 +591,72 @@ select cdr.batch_id
 	   
 	   --select * from agg_customer_tg_1min order by call_time desc limit 100000;
 RAISE NOTICE 'Runtime (sec): %', (SELECT EXTRACT(EPOCH FROM clock_timestamp() - vstart_time));
-*/
+
+
+RAISE NOTICE 'Aggregating agg_customer_tg_hourly: %', clock_timestamp();
+vstart_time = clock_timestamp();
+delete from agg_customer_tg_hourly where batch_id in (select batch_id from tmp_batches);
+insert into agg_customer_tg_hourly (batch_id, call_time, tg_id, attempts, completions, duration, duration_billed, revenue, sd, code_487, code_404
+								  , lcr_depth_completed, lcr_depth_incomplete, lcr_depth_all, lack_cap, ring_time, ring_time_before_cancel,
+								 attempts_npr, carrier_cost)
+select agg.batch_id
+, date_trunc('hour', min(call_time)) as "call_time"
+, tg_id
+, sum(attempts) as "attempts"
+, sum(completions) as "completions"
+, sum(duration) as "duration"
+, sum(duration_billed) as "duration_billed"
+, sum(revenue) as "revenue"
+, sum(sd) as "sd"
+, sum(code_487) as "code_487"
+, sum(code_404) as "code_404"
+, sum(lcr_depth_completed) as "lcr_depth_completed"
+, sum(lcr_depth_incomplete) as "lcr_depth_incomplete"
+, sum(lcr_depth_all) as "lcr_depth_all"
+, sum(lack_cap) as "lack_cap"
+, sum(ring_time) as "ring_time"
+, sum(ring_time_before_cancel) as "ring_time_before_cancel"
+, sum(attempts_npr) as "attempts_npr"
+, sum(carrier_cost) as "carrier_cost"
+	   from agg_customer_tg_1min as agg
+	   inner join tmp_batches as tmp on tmp.batch_id = agg.batch_id
+	   group by agg.batch_id, date_trunc('hour', "call_time"), tg_id;
+	   
+	   --select * from agg_customer_tg_hourly order by call_time desc limit 100000;
+RAISE NOTICE 'Runtime (sec): %', (SELECT EXTRACT(EPOCH FROM clock_timestamp() - vstart_time));
+
+
+RAISE NOTICE 'Aggregating agg_customer_tg_daily: %', clock_timestamp();
+vstart_time = clock_timestamp();
+delete from agg_customer_tg_daily where batch_id in (select batch_id from tmp_batches);
+insert into agg_customer_tg_daily (batch_id, call_time, tg_id, attempts, completions, duration, duration_billed, revenue, sd, code_487, code_404
+								  , lcr_depth_completed, lcr_depth_incomplete, lcr_depth_all, lack_cap, ring_time, ring_time_before_cancel,
+								 attempts_npr, carrier_cost)
+select agg.batch_id
+, date_trunc('day', min(call_time)) as "call_time"
+, tg_id
+, sum(attempts) as "attempts"
+, sum(completions) as "completions"
+, sum(duration) as "duration"
+, sum(duration_billed) as "duration_billed"
+, sum(revenue) as "revenue"
+, sum(sd) as "sd"
+, sum(code_487) as "code_487"
+, sum(code_404) as "code_404"
+, sum(lcr_depth_completed) as "lcr_depth_completed"
+, sum(lcr_depth_incomplete) as "lcr_depth_incomplete"
+, sum(lcr_depth_all) as "lcr_depth_all"
+, sum(lack_cap) as "lack_cap"
+, sum(ring_time) as "ring_time"
+, sum(ring_time_before_cancel) as "ring_time_before_cancel"
+, sum(attempts_npr) as "attempts_npr"
+, sum(carrier_cost) as "carrier_cost"
+	   from agg_customer_tg_hourly as agg
+	   inner join tmp_batches as tmp on tmp.batch_id = agg.batch_id
+	   group by agg.batch_id, date_trunc('day', "call_time"), tg_id;
+	   
+	   --select * from agg_customer_tg_daily order by call_time desc limit 100000;
+RAISE NOTICE 'Runtime (sec): %', (SELECT EXTRACT(EPOCH FROM clock_timestamp() - vstart_time));
 
 --generate customer lata 1-min agg
 --drop table agg_customer_lata_1min
