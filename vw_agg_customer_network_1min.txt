@@ -16,6 +16,7 @@ select call_time
 , sum(revenue) as revenue
 , sum(carrier_cost) as carrier_cost
 , sum(revenue) - sum(carrier_cost) as profit
+, sum(attempts) / 60 as cps_avg
 from agg_customer_network_1min
 group by call_time;
 
