@@ -1,0 +1,31 @@
+-- DROP TABLE public.agg_customer_tg_hourly CASCADE;
+
+CREATE TABLE public.agg_customer_tg_hourly
+(
+    batch_id text COLLATE pg_catalog."default" not null,
+    call_time timestamp without time zone not null,
+    tg_id text COLLATE pg_catalog."default" not null,
+    attempts int not null,
+    completions int not null,
+    duration int not null,
+    duration_billed int not null,
+    revenue numeric(20, 10),
+carrier_cost numeric(20, 10),
+sd int not null,
+code_487 int not null,
+	code_404 int not null,
+lcr_depth_completed int,
+lcr_depth_incomplete int,
+	lcr_depth_all int,
+	lack_cap int,
+	ring_time int,
+	ring_time_before_cancel int,
+	attempts_npr int
+)
+WITH (
+    OIDS = FALSE
+)
+TABLESPACE pg_default;
+
+ALTER TABLE public.agg_customer_tg_hourly
+    OWNER to postgres;
