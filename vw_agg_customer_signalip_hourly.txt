@@ -1,0 +1,27 @@
+--drop view vw_agg_customer_signalip_hourly;
+
+CREATE OR REPLACE VIEW public.vw_agg_customer_signalip_hourly
+ AS
+select call_time
+, signal_ip
+, sum(attempts) as attempts
+, sum(completions) as completions
+, ((sum(completions) / sum(attempts)::numeric) * 100)::numeric(5, 2) as asr
+, sum(duration) as duration_seconds
+, sum(duration_billed) as duration_billed_seconds
+, sum(sd) as sd
+, case sum(completions) when 0 then 0.00 else ((sum(sd) / sum(completions)::numeric) * 100)::numeric(5, 2) end as sdr
+, sum(code_404) as "404s"
+, case sum(completions) when 0 then 0.00 else ((sum(code_404) / sum(completions)::numeric) * 100)::numeric(5, 2) end as "404r"
+, sum(code_487) as "487s"
+, case sum(completions) when 0 then 0.00 else ((sum(code_487) / sum(completions)::numeric) * 100)::numeric(5, 2) end as "487r"
+, sum(revenue) as revenue
+, sum(carrier_cost) as carrier_cost
+, sum(revenue) - sum(carrier_cost) as profit
+, sum(attempts) / 3600 as cps_avg
+from agg_customer_signalip_hourly
+group by call_time, signal_ip;
+
+--select * from vw_agg_customer_signalip_hourly;
+
+
