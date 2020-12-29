@@ -22,6 +22,9 @@
 --Table: agg_customer_tg_1min 
 --Table: agg_customer_tg_hourly
 --Table: agg_customer_tg_daily
+--Table: agg_customer_tg_routingprefix_1min
+--Table: agg_customer_tg_routingprefix_hourly
+--Table: agg_customer_tg_routingprefix_daily
 --Table: lerg6 (BETA)
 --Table: agg_customer_ani_1min  (BETA)
 --Table: agg_customer_switchid_1min  (BETA)
@@ -770,11 +773,11 @@ RAISE NOTICE 'Runtime (sec): %', (SELECT EXTRACT(EPOCH FROM clock_timestamp() - 
 
 --generate tg prefix 1-min agg
 --create table agg_customer_tg_prefix_1min as
-/* BETA
-RAISE NOTICE 'Aggregating agg_customer_prefix_1min: %', clock_timestamp();
+
+RAISE NOTICE 'Aggregating agg_customer_routingprefix_1min: %', clock_timestamp();
 vstart_time = clock_timestamp();
-delete from agg_customer_tg_prefix_1min where batch_id in (select batch_id from tmp_batches);
-insert into agg_customer_tg_prefix_1min (batch_id, call_time, tg_id, routing_prefix, attempts, completions, lcr_depth)
+delete from agg_customer_tg_routingprefix_1min where batch_id in (select batch_id from tmp_batches);
+insert into agg_customer_tg_routingprefix_1min (batch_id, call_time, tg_id, routing_prefix, attempts, completions, lcr_depth)
 select cdr.batch_id
 , date_trunc('minute', min(call_time)) as "call_time"
 , tg_id
@@ -792,9 +795,46 @@ select cdr.batch_id
 	   inner join tmp_batches as tmp on tmp.batch_id = cdr.batch_id
 	   group by cdr.batch_id, date_trunc('minute', "call_time"), tg_id, routing_prefix;
 	   
-	   --select * from agg_customer_tg_prefix_1min order by call_time desc limit 100000;
+	   --select * from agg_customer_tg_routingprefix_1min order by call_time desc limit 100000;
 RAISE NOTICE 'Runtime (sec): %', (SELECT EXTRACT(EPOCH FROM clock_timestamp() - vstart_time));
-*/
+
+RAISE NOTICE 'Aggregating agg_customer_routingprefix_hourly: %', clock_timestamp();
+vstart_time = clock_timestamp();
+delete from agg_customer_tg_routingprefix_hourly where batch_id in (select batch_id from tmp_batches);
+insert into agg_customer_tg_routingprefix_hourly (batch_id, call_time, tg_id, routing_prefix, attempts, completions, lcr_depth)
+select agg.batch_id
+, date_trunc('hour', min(call_time)) as "call_time"
+, tg_id
+, routing_prefix
+, sum(attempts) as "attempts"
+, sum(completions) as "completions"
+, sum(lcr_depth) as "lcr_depth"
+	   from agg_customer_tg_routingprefix_1min as agg
+	   inner join tmp_batches as tmp on tmp.batch_id = agg.batch_id
+	   group by agg.batch_id, date_trunc('hour', "call_time"), tg_id, routing_prefix;
+	   
+	   --select * from agg_customer_tg_routingprefix_hourly order by call_time desc limit 100000;
+RAISE NOTICE 'Runtime (sec): %', (SELECT EXTRACT(EPOCH FROM clock_timestamp() - vstart_time));
+
+
+RAISE NOTICE 'Aggregating agg_customer_routingprefix_daily: %', clock_timestamp();
+vstart_time = clock_timestamp();
+delete from agg_customer_tg_routingprefix_daily where batch_id in (select batch_id from tmp_batches);
+insert into agg_customer_tg_routingprefix_daily (batch_id, call_time, tg_id, routing_prefix, attempts, completions, lcr_depth)
+select agg.batch_id
+, date_trunc('day', min(call_time)) as "call_time"
+, tg_id
+, routing_prefix
+, sum(attempts) as "attempts"
+, sum(completions) as "completions"
+, sum(lcr_depth) as "lcr_depth"
+	   from agg_customer_tg_routingprefix_hourly as agg
+	   inner join tmp_batches as tmp on tmp.batch_id = agg.batch_id
+	   group by agg.batch_id, date_trunc('day', "call_time"), tg_id, routing_prefix;
+	   
+	   --select * from agg_customer_tg_routingprefix_daily order by call_time desc limit 100000;
+RAISE NOTICE 'Runtime (sec): %', (SELECT EXTRACT(EPOCH FROM clock_timestamp() - vstart_time));
+
 
 --generate tg prefix/juris 1-min agg
 --create table agg_customer_tg_prefix_juris_1min as
