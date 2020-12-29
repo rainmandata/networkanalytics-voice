@@ -25,6 +25,9 @@
 --Table: agg_customer_tg_routingprefix_1min
 --Table: agg_customer_tg_routingprefix_hourly
 --Table: agg_customer_tg_routingprefix_daily
+--Table: agg_customer_signalip_1min
+--Table: agg_customer_signalip_hourly
+--Table: agg_customer_signalip_daily
 --Table: lerg6 (BETA)
 --Table: agg_customer_ani_1min  (BETA)
 --Table: agg_customer_switchid_1min  (BETA)
@@ -437,7 +440,7 @@ RAISE NOTICE 'Runtime (sec): %', (SELECT EXTRACT(EPOCH FROM clock_timestamp() - 
 --drop table agg_customer_signalip_1min
 --truncate table agg_customer_signalip_1min
 --create table agg_customer_signalip_1min as
-/* BETA
+
 RAISE NOTICE 'Aggregating agg_customer_signalip_1min: %', clock_timestamp();
 vstart_time = clock_timestamp();
 delete from agg_customer_signalip_1min where batch_id in (select batch_id from tmp_batches);
@@ -456,7 +459,7 @@ cdr.batch_id
 , sum(case cdr.sip_code when '200' then 1 else 0 end) as "completions"
 , sum(duration) as "duration"
 , sum(duration_billed) as "duration_billed"
-, sum(revenue) as "revenue"
+, sum(customer_revenue) as "revenue"
 , sum(carrier_cost) as "carrier_cost"
 , sum(case when duration between 1 and 6 then 1 else 0 end) as "sd"
 , sum(case sip_code when '487' then 1 else 0 end) as "code_487"
@@ -467,7 +470,68 @@ cdr.batch_id
 	   group by cdr.batch_id, date_trunc('minute', "call_time"), signal_ip, tg_id;
 --select * from agg_customer_signalip_1min order by call_time desc limit 100000
 RAISE NOTICE 'Runtime (sec): %', (SELECT EXTRACT(EPOCH FROM clock_timestamp() - vstart_time));
-*/
+
+RAISE NOTICE 'Aggregating agg_customer_signalip_hourly: %', clock_timestamp();
+vstart_time = clock_timestamp();
+delete from agg_customer_signalip_hourly where batch_id in (select batch_id from tmp_batches);
+insert into agg_customer_signalip_hourly
+	(batch_id, call_time, signal_ip, tg_id, attempts, attempts_ner, attempts_acr, attempts_dcr, attempts_rvm, completions, duration, duration_billed, revenue, carrier_cost, sd, code_487, code_404)
+select 
+agg.batch_id
+, date_trunc('hour', min(call_time)) as "call_time"
+, signal_ip
+, tg_id
+, sum(attempts) as "attempts"
+, sum(attempts_ner) as "attempts_ner"
+, sum(attempts_acr) as "attempts_acr"
+, sum(attempts_dcr) as "attempts_dcr"
+, null as "attempts_rvm"
+, sum(completions) as "completions"
+, sum(duration) as "duration"
+, sum(duration_billed) as "duration_billed"
+, sum(revenue) as "revenue"
+, sum(carrier_cost) as "carrier_cost"
+, sum(sd) as "sd"
+, sum(code_487) as "code_487"
+, sum(code_404) as "code_404"
+	   from agg_customer_signalip_1min as agg
+	   inner join tmp_batches as tmp on tmp.batch_id = agg.batch_id
+	   where signal_ip is not null
+	   group by agg.batch_id, date_trunc('hour', "call_time"), signal_ip, tg_id;
+--select * from agg_customer_signalip_hourly order by call_time desc limit 100000
+RAISE NOTICE 'Runtime (sec): %', (SELECT EXTRACT(EPOCH FROM clock_timestamp() - vstart_time));
+
+
+RAISE NOTICE 'Aggregating agg_customer_signalip_daily: %', clock_timestamp();
+vstart_time = clock_timestamp();
+delete from agg_customer_signalip_daily where batch_id in (select batch_id from tmp_batches);
+insert into agg_customer_signalip_daily
+	(batch_id, call_time, signal_ip, tg_id, attempts, attempts_ner, attempts_acr, attempts_dcr, attempts_rvm, completions, duration, duration_billed, revenue, carrier_cost, sd, code_487, code_404)
+select 
+agg.batch_id
+, date_trunc('day', min(call_time)) as "call_time"
+, signal_ip
+, tg_id
+, sum(attempts) as "attempts"
+, sum(attempts_ner) as "attempts_ner"
+, sum(attempts_acr) as "attempts_acr"
+, sum(attempts_dcr) as "attempts_dcr"
+, null as "attempts_rvm"
+, sum(completions) as "completions"
+, sum(duration) as "duration"
+, sum(duration_billed) as "duration_billed"
+, sum(revenue) as "revenue"
+, sum(carrier_cost) as "carrier_cost"
+, sum(sd) as "sd"
+, sum(code_487) as "code_487"
+, sum(code_404) as "code_404"
+	   from agg_customer_signalip_hourly as agg
+	   inner join tmp_batches as tmp on tmp.batch_id = agg.batch_id
+	   where signal_ip is not null
+	   group by agg.batch_id, date_trunc('day', "call_time"), signal_ip, tg_id;
+--select * from agg_customer_signalip_daily order by call_time desc limit 100000
+RAISE NOTICE 'Runtime (sec): %', (SELECT EXTRACT(EPOCH FROM clock_timestamp() - vstart_time));
+
 
 
 --generate 1-min customer-side mediaip agg
