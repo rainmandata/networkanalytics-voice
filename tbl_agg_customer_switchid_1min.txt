@@ -1,0 +1,26 @@
+-- Table: public.agg_customer_switchid_1min
+
+-- DROP TABLE public.agg_customer_switchid_1min CASCADE;
+
+CREATE TABLE public.agg_customer_switchid_1min
+(
+    batch_id text COLLATE pg_catalog."default" NOT NULL,
+    call_time timestamp without time zone NOT NULL,
+    switch_id text COLLATE pg_catalog."default" NOT NULL,
+    attempts int,
+    attempts_ner int,
+    completions int,
+    duration int,
+    duration_billed int,
+    revenue numeric,
+    sd int,
+    code_487 int,
+    code_404 int
+)
+WITH (
+    OIDS = FALSE
+)
+TABLESPACE pg_default;
+
+ALTER TABLE public.agg_customer_switchid_1min
+    OWNER to postgres;
