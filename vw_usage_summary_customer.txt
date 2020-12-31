@@ -1,0 +1,16 @@
+-- View: public.vw_usage_summary_customer
+
+-- DROP VIEW public.vw_usage_summary_customer;
+
+CREATE OR REPLACE VIEW public.vw_usage_summary_customer
+ AS
+ SELECT coalesce(trunk_groups_customer.customer_id, 'customer_id not assigned in trunk_groups_customer') as customer_id
+    , sum(agg_customer_tg_daily.revenue) AS usage_amount
+   FROM agg_customer_tg_daily
+   right outer join trunk_groups_customer on trunk_groups_customer.tg_id = agg_customer_tg_daily.tg_id
+   where agg_customer_tg_daily.revenue >= 0
+  GROUP BY trunk_groups_customer.customer_id;
+
+ALTER TABLE public.vw_usage_summary_customer
+    OWNER TO postgres;
+

@@ -1,0 +1,14 @@
+-- View: public.vw_transaction_summary_customer
+
+-- DROP VIEW public.vw_transaction_summary_customer;
+
+CREATE OR REPLACE VIEW public.vw_transaction_summary_customer
+ AS
+ SELECT transactions_customer.customer_id,
+    sum(transactions_customer.tran_amount) AS tran_summ
+   FROM transactions_customer
+  GROUP BY transactions_customer.customer_id;
+
+ALTER TABLE public.vw_transaction_summary_customer
+    OWNER TO postgres;
+
