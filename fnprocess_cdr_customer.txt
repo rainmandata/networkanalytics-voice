@@ -31,19 +31,9 @@
 --Table: agg_customer_mediaip_1min
 --Table: agg_customer_mediaip_hourly
 --Table: agg_customer_mediaip_daily
---Table: lerg6 (BETA)
---Table: agg_customer_ani_1min  (BETA)
---Table: agg_customer_switchid_1min  (BETA)
---Table: agg_customer_signalip_1min  (BETA)
---Table: agg_customer_mediaip_1min  (BETA)
---Table: agg_customer_lata_1min  (BETA)
---Table: agg_customer_ocn_1min  (BETA)
---Table: agg_customer_state_1min  (BETA)
---Table: agg_customer_clli_1min  (BETA)
---Table: agg_customer_tg_prefix_1min  (BETA)
---Table: agg_customer_tg_prefix_juris_1min  (BETA)
---Table: bad_numbers  (BETA)
---Table: settings (BETA)
+--Table: agg_switchid_1min
+--Table: agg_switchid_hourly
+--Table: agg_switchid_daily
 
 
 
@@ -278,9 +268,6 @@ RAISE NOTICE 'Runtime (sec): %', (SELECT EXTRACT(EPOCH FROM clock_timestamp() - 
 */
 
 --generate 1-min customer-side network agg
---drop table agg_customer_network_1min
---truncate table agg_customer_network_1min
---create table agg_customer_network_1min as
 RAISE NOTICE 'Aggregating agg_customer_network_1min: %', clock_timestamp();
 vstart_time = clock_timestamp();
 delete from agg_customer_network_1min where batch_id in (select batch_id from tmp_batches);
@@ -409,8 +396,8 @@ RAISE NOTICE 'Runtime (sec): %', (SELECT EXTRACT(EPOCH FROM clock_timestamp() - 
 --drop table agg_customer_switchid_1min
 --truncate table agg_customer_switchid_1min
 --create table agg_customer_switchid_1min as
-/* BETA
-RAISE NOTICE 'Aggregating agg_switchid_1min: %', clock_timestamp();
+
+RAISE NOTICE 'Aggregating agg_customer_switchid_1min: %', clock_timestamp();
 vstart_time = clock_timestamp();
 delete from agg_customer_switchid_1min where batch_id in (select batch_id from tmp_batches);
 insert into agg_customer_switchid_1min
@@ -426,7 +413,7 @@ cdr.batch_id
 , sum(case cdr.sip_code when '200' then 1 else 0 end) as "completions"
 , sum(duration) as "duration"
 , sum(duration_billed) as "duration_billed"
-, sum(revenue) as "revenue"
+, sum(customer_revenue) as "revenue"
 , sum(case when duration between 1 and 6 then 1 else 0 end) as "sd"
 , sum(case sip_code when '487' then 1 else 0 end) as "code_487"
 , sum(case sip_code when '404' then 1 else 0 end) as "code_404"
@@ -435,7 +422,59 @@ cdr.batch_id
 	   group by cdr.batch_id, date_trunc('minute', "call_time"), cdr.switch_id;
 --select * from agg_customer_switchid_1min order by call_time desc limit 100000;
 RAISE NOTICE 'Runtime (sec): %', (SELECT EXTRACT(EPOCH FROM clock_timestamp() - vstart_time));
-*/
+
+RAISE NOTICE 'Aggregating agg_customer_switchid_hourly: %', clock_timestamp();
+vstart_time = clock_timestamp();
+delete from agg_customer_switchid_hourly where batch_id in (select batch_id from tmp_batches);
+insert into agg_customer_switchid_hourly
+	(batch_id, call_time, switch_id, attempts, attempts_ner, completions, duration, duration_billed, revenue, sd, code_487, code_404)
+select 
+agg.batch_id
+, date_trunc('hour', min(call_time)) as "call_time"
+, switch_id
+, sum(attempts) as "attempts"
+, sum(attempts_ner) as "attempts_ner"
+--, count(distinct(dnis)) as "attempts_dcr"
+--, null as "attempts_rvm"
+, sum(completions) as "completions"
+, sum(duration) as "duration"
+, sum(duration_billed) as "duration_billed"
+, sum(revenue) as "revenue"
+, sum(sd) as "sd"
+, sum(code_487) as "code_487"
+, sum(code_404) as "code_404"
+	   from agg_customer_switchid_1min as agg
+	   inner join tmp_batches as tmp on tmp.batch_id = agg.batch_id
+	   group by agg.batch_id, date_trunc('hour', "call_time"), agg.switch_id;
+--select * from agg_customer_switchid_hourly order by call_time desc limit 100000;
+RAISE NOTICE 'Runtime (sec): %', (SELECT EXTRACT(EPOCH FROM clock_timestamp() - vstart_time));
+
+RAISE NOTICE 'Aggregating agg_customer_switchid_daily: %', clock_timestamp();
+vstart_time = clock_timestamp();
+delete from agg_customer_switchid_daily where batch_id in (select batch_id from tmp_batches);
+insert into agg_customer_switchid_daily
+	(batch_id, call_time, switch_id, attempts, attempts_ner, completions, duration, duration_billed, revenue, sd, code_487, code_404)
+select 
+agg.batch_id
+, date_trunc('day', min(call_time)) as "call_time"
+, switch_id
+, sum(attempts) as "attempts"
+, sum(attempts_ner) as "attempts_ner"
+--, count(distinct(dnis)) as "attempts_dcr"
+--, null as "attempts_rvm"
+, sum(completions) as "completions"
+, sum(duration) as "duration"
+, sum(duration_billed) as "duration_billed"
+, sum(revenue) as "revenue"
+, sum(sd) as "sd"
+, sum(code_487) as "code_487"
+, sum(code_404) as "code_404"
+	   from agg_customer_switchid_hourly as agg
+	   inner join tmp_batches as tmp on tmp.batch_id = agg.batch_id
+	   group by agg.batch_id, date_trunc('day', "call_time"), agg.switch_id;
+--select * from agg_customer_switchid_daily order by call_time desc limit 100000;
+RAISE NOTICE 'Runtime (sec): %', (SELECT EXTRACT(EPOCH FROM clock_timestamp() - vstart_time));
+
 
 
 --generate 1-min customer-side signalip agg
@@ -533,10 +572,6 @@ RAISE NOTICE 'Runtime (sec): %', (SELECT EXTRACT(EPOCH FROM clock_timestamp() - 
 
 
 --generate 1-min customer-side mediaip agg
---drop table agg_customer_mediaip_1min
---truncate table agg_customer_mediaip_1min
---create table agg_customer_mediaip_1min as
-
 RAISE NOTICE 'Aggregating agg_customer_mediaip_1min: %', clock_timestamp();
 vstart_time = clock_timestamp();
 delete from agg_customer_mediaip_1min where batch_id in (select batch_id from tmp_batches);
@@ -678,9 +713,6 @@ RAISE NOTICE 'Runtime (sec): %', (SELECT EXTRACT(EPOCH FROM clock_timestamp() - 
 
 
 --generate tg 1-min agg
---drop table agg_customer_tg_1min
---create table agg_customer_tg_1min as
-
 RAISE NOTICE 'Aggregating agg_customer_tg_1min: %', clock_timestamp();
 vstart_time = clock_timestamp();
 delete from agg_customer_tg_1min where batch_id in (select batch_id from tmp_batches);
