@@ -1,0 +1,29 @@
+-- Table: public.agg_customer_ani_1min
+ 
+-- DROP TABLE public.agg_customer_ani_1min CASCADE;
+
+CREATE TABLE public.agg_customer_ani_1min
+(
+    batch_id text COLLATE pg_catalog."default" not null,
+    call_time timestamp without time zone not null,
+ani text not null,
+    attempts int not null,
+attempts_ner int not null,
+attempts_dcr int not null,
+attempts_rvm int,
+    completions int not null,
+    duration int not null,
+    duration_billed int not null,
+    revenue numeric(20, 10) not null,
+sd int not null,
+code_487 int not null,
+	code_404 int not null,
+lcr_depth int
+)
+WITH (
+    OIDS = FALSE
+)
+TABLESPACE pg_default;
+
+ALTER TABLE public.agg_customer_ani_1min
+    OWNER to postgres;
