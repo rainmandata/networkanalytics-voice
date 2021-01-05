@@ -1,0 +1,23 @@
+--drop table lerg6;
+ 
+CREATE TABLE public.lerg6
+(
+    lata text NOT NULL,
+    npa text NOT NULL,
+    nxx text NOT NULL,
+    block_id text NOT NULL,
+    aocn text NOT NULL,
+    ocn text NOT NULL,
+    loc_state text NOT NULL,
+    rc_abbre text NOT NULL,
+    switch text--,
+    --PRIMARY KEY (npa, nxx, block_id)
+)
+WITH (
+    OIDS = FALSE,
+    FILLFACTOR = 100
+)
+TABLESPACE pg_default;
+
+ALTER TABLE public.lerg6
+    OWNER to postgres;
