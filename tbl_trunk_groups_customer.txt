@@ -25,6 +25,8 @@ CREATE TABLE public.trunk_groups_customer
     target_rate numeric(20,10), --target daily average rate for trunk group. Used in reporting/alarming/dashboards/alarms.
     target_ppm numeric(20,10), --target profit per minute for trunk group. Used in reporting/alarming/dashboards/alarms.
     target_margin numeric(5,2), --target margin for trunk group. Used in reporting/alarming/dashboards/alarms.
+    min_ppm numeric(20,10), --minimum profit per minute. Used for profit protection. Leave null if not using.
+    min_margin smallint, --minimum margin (percent). Used for profit protection. Leave null if not using.
     created_at timestamp without time zone NOT NULL DEFAULT now(),
     updated_at timestamp without time zone,
     CONSTRAINT trunk_groups_customer_pkey PRIMARY KEY (tg_id)
