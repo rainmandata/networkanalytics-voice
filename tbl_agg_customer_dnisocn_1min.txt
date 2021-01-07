@@ -1,0 +1,22 @@
+-- Table: public.agg_customer_dnisocn_1min
+
+-- DROP TABLE public.agg_customer_dnisocn_1min CASCADE;
+
+CREATE TABLE public.agg_customer_dnisocn_1min
+(
+    batch_id text COLLATE pg_catalog."default",
+    call_time timestamp without time zone,
+    dnis_ocn text COLLATE pg_catalog."default",
+    attempts int,
+    completions int,
+    duration int,
+    duration_billed int,
+    revenue numeric
+)
+WITH (
+    OIDS = FALSE
+)
+TABLESPACE pg_default;
+
+ALTER TABLE public.agg_customer_dnisocn_1min
+    OWNER to postgres;
