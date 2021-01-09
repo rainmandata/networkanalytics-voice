@@ -4,8 +4,8 @@
 --you supply the batch_id parameter, it will process that batch. If you do not
 --then it will choose the oldest batch that has not received in any new records
 --in the last 10 seconds.
---Note: If a CDR batch gets borked, you can resubmit it and Rain Man will clear out the 
---previous entries for that batch automatically.
+--Note: If a CDR batch gets borked, you can delete the row from agg_customer_batch, resubmit the CDR to cdr_customer
+--and Rain Man will clear out the previous entries for that batch automatically.
 
 
 --DEPENDENCIES--
@@ -45,6 +45,9 @@
 --Table: agg_customer_dnisocn_1min
 --Table: agg_customer_dnisocn_hourly
 --Table: agg_customer_dnisocn_daily
+--Table: agg_customer_dnisstate_1min
+--Table: agg_customer_dnisstate_hourly
+--Table: agg_customer_dnisstate_daily
 
 
 --PSEUDO-DEPENDENCIES--
@@ -225,18 +228,18 @@ RAISE NOTICE 'Runtime (sec): %', (SELECT EXTRACT(EPOCH FROM clock_timestamp() - 
 
 --retrieve dnis_state
 --TODO: lookup to setting to see if using state statistics. skip if not.
-/*RAISE NOTICE 'Determining State: %', clock_timestamp();
+RAISE NOTICE 'Determining dnis_state: %', clock_timestamp();
 vstart_time = clock_timestamp();
-update cdr_customer set dest_state = (select state from tmp_lerg6 where left(cdr_customer.lrn, 8) = tmp_lerg6.prefix)
-where cdr_customer.dest_state is null and length(cdr_customer.lrn) = 11;
+update cdr_customer set dnis_state = (select state from mv_lerg6 where left(cdr_customer.lrn, 8) = mv_lerg6.prefix)
+where cdr_customer.dnis_state is null and length(cdr_customer.lrn) = 11;
 
-update cdr_customer set dest_state = (select state from tmp_lerg6 where left(cdr_customer.dnis, 8) = tmp_lerg6.prefix)
-where cdr_customer.dest_state is null and length(cdr_customer.dnis) = 11;
+update cdr_customer set dnis_state = (select state from mv_lerg6 where left(cdr_customer.dnis, 8) = mv_lerg6.prefix)
+where cdr_customer.dnis_state is null and length(cdr_customer.dnis) = 11;
 
-update cdr_customer set dest_state = (select state from tmp_lerg6a where routing_prefix = tmp_lerg6a.prefix)
-where cdr_customer.dest_state is null;
+update cdr_customer set dnis_state = (select state from mv_lerg6a where routing_prefix = mv_lerg6a.prefix)
+where cdr_customer.dnis_state is null;
 RAISE NOTICE 'Runtime (sec): %', (SELECT EXTRACT(EPOCH FROM clock_timestamp() - vstart_time));
-*/
+
 
 --retrieve clli
 --TODO: lookup to setting to see if using clli statistics. Skip if not.
@@ -1003,32 +1006,76 @@ select agg.batch_id
 RAISE NOTICE 'Runtime (sec): %', (SELECT EXTRACT(EPOCH FROM clock_timestamp() - vstart_time));
 
 
---generate customer state 1-min agg
---drop table agg_customer_state_1min
+--generate customer dnis_state 1-min agg
+--drop table agg_customer_dnstate_1min
 --create table agg_customer_state_1min as
-/* BETA
-RAISE NOTICE 'Aggregating agg_customer_state_1min: %', clock_timestamp();
+
+RAISE NOTICE 'Aggregating agg_customer_dnisstate_1min: %', clock_timestamp();
 vstart_time = clock_timestamp();
-delete from agg_customer_state_1min where batch_id in (select batch_id from tmp_batches);
-insert into agg_customer_state_1min (batch_id, call_time, dest_state, attempts, completions, duration, duration_billed, revenue)
+delete from agg_customer_dnisstate_1min where batch_id in (select batch_id from tmp_batches);
+insert into agg_customer_dnisstate_1min (batch_id, call_time, dnis_state, attempts, completions, duration, duration_billed, revenue)
 select cdr.batch_id
 , date_trunc('minute', min(call_time)) as "call_time"
-, coalesce(dest_state, 'XX') as "dest_state"
+, coalesce(dnis_state, 'XX') as "dnis_state"
 , count(*) as "attempts"
 , sum(case cdr.sip_code when '200' then 1 else 0 end) as "completions"
+, sum(duration) as "duration"
+, sum(duration_billed) as "duration_billed"
+, sum(customer_revenue) as "revenue"
+--, sum(case when duration between 1 and 6 then 1 else 0 end)
+--, sum(case sip_code when '487' then 1 else 0 end)
+--, sum(case sip_code when '404' then 1 else 0 end)
+	   from cdr_customer as cdr
+	   inner join tmp_batches as tmp on tmp.batch_id = cdr.batch_id
+	   group by cdr.batch_id, date_trunc('minute', "call_time"), dnis_state;
+	   
+	   --select * from agg_customer_dnisstate_1min order by call_time desc limit 100000;
+RAISE NOTICE 'Runtime (sec): %', (SELECT EXTRACT(EPOCH FROM clock_timestamp() - vstart_time));
+
+RAISE NOTICE 'Aggregating agg_customer_dnisstate_hourly: %', clock_timestamp();
+vstart_time = clock_timestamp();
+delete from agg_customer_dnisstate_hourly where batch_id in (select batch_id from tmp_batches);
+insert into agg_customer_dnisstate_hourly (batch_id, call_time, dnis_state, attempts, completions, duration, duration_billed, revenue)
+select agg.batch_id
+, date_trunc('hour', min(call_time)) as "call_time"
+, dnis_state
+, sum(attempts) as "attempts"
+, sum(completions) as "completions"
 , sum(duration) as "duration"
 , sum(duration_billed) as "duration_billed"
 , sum(revenue) as "revenue"
 --, sum(case when duration between 1 and 6 then 1 else 0 end)
 --, sum(case sip_code when '487' then 1 else 0 end)
 --, sum(case sip_code when '404' then 1 else 0 end)
-	   from cdr_customer as cdr
-	   inner join tmp_batches as tmp on tmp.batch_id = cdr.batch_id
-	   group by cdr.batch_id, date_trunc('minute', "call_time"), dest_state;
+	   from agg_customer_dnisstate_1min as agg
+	   inner join tmp_batches as tmp on tmp.batch_id = agg.batch_id
+	   group by agg.batch_id, date_trunc('hour', "call_time"), dnis_state;
 	   
-	   --select * from agg_customer_state_1min order by call_time desc limit 100000;
+	   --select * from agg_customer_dnisstate_hourly order by call_time desc limit 100000;
 RAISE NOTICE 'Runtime (sec): %', (SELECT EXTRACT(EPOCH FROM clock_timestamp() - vstart_time));
-*/
+
+RAISE NOTICE 'Aggregating agg_customer_dnisstate_daily: %', clock_timestamp();
+vstart_time = clock_timestamp();
+delete from agg_customer_dnisstate_daily where batch_id in (select batch_id from tmp_batches);
+insert into agg_customer_dnisstate_daily (batch_id, call_time, dnis_state, attempts, completions, duration, duration_billed, revenue)
+select agg.batch_id
+, date_trunc('day', min(call_time)) as "call_time"
+, dnis_state
+, sum(attempts) as "attempts"
+, sum(completions) as "completions"
+, sum(duration) as "duration"
+, sum(duration_billed) as "duration_billed"
+, sum(revenue) as "revenue"
+--, sum(case when duration between 1 and 6 then 1 else 0 end)
+--, sum(case sip_code when '487' then 1 else 0 end)
+--, sum(case sip_code when '404' then 1 else 0 end)
+	   from agg_customer_dnisstate_hourly as agg
+	   inner join tmp_batches as tmp on tmp.batch_id = agg.batch_id
+	   group by agg.batch_id, date_trunc('day', "call_time"), dnis_state;
+	   
+	   --select * from agg_customer_dnisstate_daily order by call_time desc limit 100000;
+RAISE NOTICE 'Runtime (sec): %', (SELECT EXTRACT(EPOCH FROM clock_timestamp() - vstart_time));
+
 
 
 --generate customer clli 1-min agg
