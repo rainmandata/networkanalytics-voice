@@ -1,0 +1,97 @@
+--DOCUMENTATION: https://github.com/rainmandata/networkanalytics-voice/wiki/Customer-Traffic-Profile-Monitoring
+--SAMPLE EXECUTION: select * from fnanalyze_traffic_profile_customer('2020-01-01', '2020-12-31');
+
+--DEPENDENCIES
+--Table: trunk_groups_customer
+--Table: agg_customer_tg_daily
+
+--AUGMENTATIONS
+--1. Detect if period is less than a day and switch source the _1min agg.
+--2. Add ability to archive the calculation.
+
+--DROP FUNCTION fnanalyze_traffic_profile_customer(timestamp without time zone,timestamp without time zone);
+
+create or replace function fnanalyze_traffic_profile_customer (
+      p_start_datetime timestamp without time zone
+	, p_end_datetime timestamp without time zone
+) 
+returns table ( tg_id text
+			  , attempts bigint
+			  , completions bigint
+			  , asr_target numeric(5, 2)
+			  , asr_actual numeric(5, 2)
+			  , asr_variance numeric(5, 2)
+			  , acd_target smallint
+			  , acd_actual smallint
+			  , acd_variance smallint
+			  , sdr_target numeric(5, 2)
+			  , sdr_actual numeric(5, 2)
+			  , sdr_variance numeric(5, 2)
+			  , "404r_target" numeric(5, 2)
+			  , "404r_actual" numeric(5, 2)
+			  , "404r_variance" numeric(5, 2)
+			  , "487r_target" numeric(5, 2)
+			  , "487r_actual" numeric(5, 2)
+			  , "487r_variance" numeric(5, 2)
+			  , tg_name text
+			  , tg_status text
+			  , customer_id text
+) 
+language plpgsql
+as $$
+declare 
+
+begin
+
+DROP TABLE IF EXISTS tmp_traffic_profile_customer;
+
+--results left in tmp table between runs in case you want to pull from there.
+CREATE TABLE tmp_traffic_profile_customer AS
+	select trunk_groups_customer.tg_id
+	, coalesce(sum(agg_customer_tg_daily.attempts), 0) as "attempts"
+	, coalesce(sum(agg_customer_tg_daily.completions), 0) as "completions" 
+	, trunk_groups_customer.target_asr as "asr_target"
+	, ((coalesce(sum(agg_customer_tg_daily.completions), 0) / coalesce(sum(agg_customer_tg_daily.attempts), 0)::numeric) * 100)::numeric(5, 2) as "asr_actual"
+	, trunk_groups_customer.target_acd as "acd_target"
+	, (sum(agg_customer_tg_daily.duration_billed) / sum(agg_customer_tg_daily.completions))::smallint as "acd_actual"
+	, trunk_groups_customer.target_sdr as "sdr_target"
+	, ((coalesce(sum(agg_customer_tg_daily.sd), 0) / coalesce(sum(agg_customer_tg_daily.completions), 0)::numeric) * 100)::numeric(5, 2) as "sdr_actual"
+	, trunk_groups_customer.target_404r as "404r_target"
+	, ((coalesce(sum(agg_customer_tg_daily.code_404), 0) / coalesce(sum(agg_customer_tg_daily.attempts), 0)::numeric) * 100)::numeric(5, 2) as "404r_actual"
+	, trunk_groups_customer.target_487r as "487r_target"
+	, ((coalesce(sum(agg_customer_tg_daily.code_487), 0) / coalesce(sum(agg_customer_tg_daily.attempts), 0)::numeric) * 100)::numeric(5, 2) as "487r_actual"
+	from trunk_groups_customer
+	left outer join agg_customer_tg_daily on agg_customer_tg_daily.tg_id = trunk_groups_customer.tg_id
+		where agg_customer_tg_daily.call_time >= p_start_datetime
+			and agg_customer_tg_daily.call_time <= p_end_datetime
+		group by trunk_groups_customer.tg_id
+	;
+
+RETURN QUERY 
+	select tmp_traffic_profile_customer.tg_id
+	, tmp_traffic_profile_customer.attempts
+	, tmp_traffic_profile_customer.completions
+	, tmp_traffic_profile_customer.asr_target
+	, tmp_traffic_profile_customer.asr_actual
+	, tmp_traffic_profile_customer.asr_actual - tmp_traffic_profile_customer.asr_target as "asr_variance"
+	, tmp_traffic_profile_customer.acd_target
+	, tmp_traffic_profile_customer.acd_actual
+	, tmp_traffic_profile_customer.acd_actual - tmp_traffic_profile_customer.acd_target as "acd_variance"
+	, tmp_traffic_profile_customer.sdr_target
+	, tmp_traffic_profile_customer.sdr_actual
+	, tmp_traffic_profile_customer.sdr_actual - tmp_traffic_profile_customer.sdr_target as "sdr_variance"
+	, tmp_traffic_profile_customer."404r_target"
+	, tmp_traffic_profile_customer."404r_actual"
+	, tmp_traffic_profile_customer."404r_actual" - tmp_traffic_profile_customer."404r_target" as "404r_variance"
+	, tmp_traffic_profile_customer."487r_target"
+	, tmp_traffic_profile_customer."487r_actual"
+	, tmp_traffic_profile_customer."487r_actual" - tmp_traffic_profile_customer."487r_target" as "487r_variance"
+	, trunk_groups_customer.tg_name
+	, trunk_groups_customer.status as "tg_status"
+	, trunk_groups_customer.customer_id
+	from tmp_traffic_profile_customer
+	inner join trunk_groups_customer on trunk_groups_customer.tg_id = tmp_traffic_profile_customer.tg_id
+	order by tmp_traffic_profile_customer.attempts desc
+	;
+
+end; $$ 
