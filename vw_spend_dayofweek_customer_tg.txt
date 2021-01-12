@@ -1,0 +1,15 @@
+-- View: public.vw_spend_dayofweek_customer_tg
+
+-- DROP VIEW public.vw_spend_dayofweek_customer_tg;
+
+CREATE OR REPLACE VIEW public.vw_spend_dayofweek_customer_tg
+ AS
+ SELECT vw_daily_spend_customer_tg.tg_id
+	, day_of_week as "day_of_week"
+	, avg(vw_daily_spend_customer_tg.spend)::numeric(20, 2) AS spend_avg
+   FROM vw_daily_spend_customer_tg
+  GROUP BY vw_daily_spend_customer_tg.tg_id, (vw_daily_spend_customer_tg.day_of_week);
+
+ALTER TABLE public.vw_spend_dayofweek_customer_tg
+    OWNER TO postgres;
+
