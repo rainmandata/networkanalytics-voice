@@ -1,0 +1,26 @@
+CREATE OR REPLACE VIEW public.vw_agg_carrier_network_daily
+ AS
+select call_time
+, sum(attempts) as attempts
+, sum(attempts_ner) as attempts_ner
+, sum(completions) as completions
+, ((sum(completions) / sum(attempts)::numeric) * 100)::numeric(5, 2) as asr
+, ((sum(completions) / sum(attempts_ner)::numeric) * 100)::numeric(5, 2) as ner
+, sum(duration) as duration_seconds
+, sum(duration_billed) as duration_billed_seconds
+, sum(sd) as sd
+, ((sum(sd) / sum(completions)::numeric) * 100)::numeric(5, 2) as sdr
+, sum(code_404) as "404s"
+, ((sum(code_404) / sum(completions)::numeric) * 100)::numeric(5, 2) as "404r"
+--, sum(code_486)
+, sum(code_487) as "487s"
+, ((sum(code_487) / sum(completions)::numeric) * 100)::numeric(5, 2) as "487r"
+, sum(carrier_cost) as carrier_cost
+, sum(attempts) / 86400 as cps_avg
+from agg_carrier_network_daily
+group by call_time;
+
+ALTER TABLE public.vw_agg_carrier_network_daily
+    OWNER TO postgres;
+	
+--select * from vw_agg_carrier_network_daily
