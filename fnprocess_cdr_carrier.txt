@@ -4,7 +4,8 @@
 --you supply the batch_id parameter, it will process that batch. If you do not
 --then it will choose the oldest batch that has not received in any new records
 --in the last 10 seconds.
---Note: If a CDR batch gets borked, you can delete the row from agg_carrier_batch, resubmit the CDR to cdr_carrier
+--Note: If a CDR batch gets borked (that's the technical term for sending in a batch batch)
+--, you can delete the row from agg_carrier_batch, resubmit the CDR file to the cdr_carrier table
 --and Rain Man will clear out the previous entries for that batch automatically.
 
 
@@ -18,6 +19,9 @@
 --Table: agg_carrier_network_sipcode_1min
 --Table: agg_carrier_network_sipcode_hourly
 --Table: agg_carrier_network_sipcode_daily
+--Table: agg_carrier_tg_1min
+--Table: agg_carrier_tg_hourly
+--Table: agg_carrier_tg_daily
 
 --PSEUDO-DEPENDENCIES--
 --Some dependencies are only required for specific statistics.
@@ -464,12 +468,11 @@ RAISE NOTICE 'Runtime (sec): %', (SELECT EXTRACT(EPOCH FROM clock_timestamp() - 
 
 
 
---generate tg 1-min agg
-/*
+--generate carrier tg 1-min agg
 RAISE NOTICE 'Aggregating agg_carrier_tg_1min: %', clock_timestamp();
 vstart_time = clock_timestamp();
 delete from agg_carrier_tg_1min where batch_id in (select batch_id from tmp_batches_carrier);
-insert into agg_carrier_tg_1min (batch_id, call_time, tg_id, attempts, completions, duration, duration_billed, revenue, sd, code_487, code_404, lcr_depth_completed, lcr_depth_incomplete, lcr_depth_all, lack_cap, ring_time, ring_time_before_cancel, attempts_npr, carrier_cost)
+insert into agg_carrier_tg_1min (batch_id, call_time, tg_id, attempts, completions, duration, duration_billed, sd, code_487, code_404, lcr_depth_completed, lcr_depth_incomplete, lcr_depth_all, lack_cap, ring_time, ring_time_before_cancel, attempts_npr, carrier_cost)
 select cdr.batch_id
 , date_trunc('minute', min(call_time)) as "call_time"
 , tg_id
@@ -477,7 +480,6 @@ select cdr.batch_id
 , sum(case cdr.sip_code when '200' then 1 else 0 end) as "completions"
 , sum(duration) as "duration"
 , sum(duration_billed) as "duration_billed"
-, sum(customer_revenue) as "revenue"
 , sum(case when duration between 1 and 6 then 1 else 0 end) as "sd"
 , sum(case sip_code when '487' then 1 else 0 end) as "code_487"
 , sum(case sip_code when '404' then 1 else 0 end) as "code_404"
@@ -495,14 +497,12 @@ select cdr.batch_id
 	   
 	   --select * from agg_carrier_tg_1min order by call_time desc limit 100000;
 RAISE NOTICE 'Runtime (sec): %', (SELECT EXTRACT(EPOCH FROM clock_timestamp() - vstart_time));
-*/
 
 
-/*
 RAISE NOTICE 'Aggregating agg_carrier_tg_hourly: %', clock_timestamp();
 vstart_time = clock_timestamp();
 delete from agg_carrier_tg_hourly where batch_id in (select batch_id from tmp_batches_carrier);
-insert into agg_carrier_tg_hourly (batch_id, call_time, tg_id, attempts, completions, duration, duration_billed, revenue, sd, code_487, code_404, lcr_depth_completed, lcr_depth_incomplete, lcr_depth_all, lack_cap, ring_time, ring_time_before_cancel, attempts_npr, carrier_cost)
+insert into agg_carrier_tg_hourly (batch_id, call_time, tg_id, attempts, completions, duration, duration_billed, sd, code_487, code_404, lcr_depth_completed, lcr_depth_incomplete, lcr_depth_all, lack_cap, ring_time, ring_time_before_cancel, attempts_npr, carrier_cost)
 select agg.batch_id
 , date_trunc('hour', min(call_time)) as "call_time"
 , tg_id
@@ -510,7 +510,6 @@ select agg.batch_id
 , sum(completions) as "completions"
 , sum(duration) as "duration"
 , sum(duration_billed) as "duration_billed"
-, sum(revenue) as "revenue"
 , sum(sd) as "sd"
 , sum(code_487) as "code_487"
 , sum(code_404) as "code_404"
@@ -526,15 +525,13 @@ select agg.batch_id
 	   inner join tmp_batches_carrier as tmp on tmp.batch_id = agg.batch_id
 	   group by agg.batch_id, date_trunc('hour', "call_time"), tg_id;
 	   
-	   --select * from agg_customer_tg_hourly order by call_time desc limit 100000;
+	   --select * from agg_carrier_tg_hourly order by call_time desc limit 100000;
 RAISE NOTICE 'Runtime (sec): %', (SELECT EXTRACT(EPOCH FROM clock_timestamp() - vstart_time));
-*/
 
-/*
 RAISE NOTICE 'Aggregating agg_carrier_tg_daily: %', clock_timestamp();
 vstart_time = clock_timestamp();
 delete from agg_carrier_tg_daily where batch_id in (select batch_id from tmp_batches_carrier);
-insert into agg_carrier_tg_daily (batch_id, call_time, tg_id, attempts, completions, duration, duration_billed, revenue, sd, code_487, code_404, lcr_depth_completed, lcr_depth_incomplete, lcr_depth_all, lack_cap, ring_time, ring_time_before_cancel, attempts_npr, carrier_cost)
+insert into agg_carrier_tg_daily (batch_id, call_time, tg_id, attempts, completions, duration, duration_billed, sd, code_487, code_404, lcr_depth_completed, lcr_depth_incomplete, lcr_depth_all, lack_cap, ring_time, ring_time_before_cancel, attempts_npr, carrier_cost)
 select agg.batch_id
 , date_trunc('day', min(call_time)) as "call_time"
 , tg_id
@@ -542,7 +539,6 @@ select agg.batch_id
 , sum(completions) as "completions"
 , sum(duration) as "duration"
 , sum(duration_billed) as "duration_billed"
-, sum(revenue) as "revenue"
 , sum(sd) as "sd"
 , sum(code_487) as "code_487"
 , sum(code_404) as "code_404"
@@ -560,7 +556,7 @@ select agg.batch_id
 	   
 	   --select * from agg_carrier_tg_daily order by call_time desc limit 100000;
 RAISE NOTICE 'Runtime (sec): %', (SELECT EXTRACT(EPOCH FROM clock_timestamp() - vstart_time));
-*/
+
 
 
 
