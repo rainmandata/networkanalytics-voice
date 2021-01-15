@@ -15,7 +15,9 @@
 --Table: agg_carrier_network_1min
 --Table: agg_carrier_network_hourly
 --Table: agg_carrier_network_daily
-
+--Table: agg_carrier_network_sipcode_1min
+--Table: agg_carrier_network_sipcode_hourly
+--Table: agg_carrier_network_sipcode_daily
 
 --PSEUDO-DEPENDENCIES--
 --Some dependencies are only required for specific statistics.
@@ -32,7 +34,7 @@
 
 
 CREATE OR REPLACE FUNCTION public.fnprocess_cdr_carrier(
-in_batch_id text
+in_batch_id text --TODO: convert to array to process multiple batches per execution.
 	)
     RETURNS void
     LANGUAGE 'plpgsql'
@@ -407,7 +409,6 @@ RAISE NOTICE 'Runtime (sec): %', (SELECT EXTRACT(EPOCH FROM clock_timestamp() - 
 */
 
 --generate carrier network-wide sip code aggs
-/*
 RAISE NOTICE 'Aggregating agg_carrier_network_sipcode_1min: %', clock_timestamp();
 vstart_time = clock_timestamp();
 delete from agg_carrier_network_sipcode_1min where batch_id in (select batch_id from tmp_batches_carrier);
@@ -424,9 +425,8 @@ cdr.batch_id
 --select * from agg_carrier_network_sipcode_1min order by call_time desc limit 100000;
 --select sip_code from agg_carrier_network_sipcode_1min group by sip_code order by count(*) desc
 RAISE NOTICE 'Runtime (sec): %', (SELECT EXTRACT(EPOCH FROM clock_timestamp() - vstart_time));
-*/
 
-/*
+
 RAISE NOTICE 'Aggregating agg_carrier_network_sipcode_hourly: %', clock_timestamp();
 vstart_time = clock_timestamp();
 delete from agg_carrier_network_sipcode_hourly where batch_id in (select batch_id from tmp_batches_carrier);
@@ -443,9 +443,8 @@ agg.batch_id
 --select * from agg_carrier_network_sipcode_hourly order by call_time desc limit 100000;
 --select sip_code from agg_carrier_network_sipcode_hourly group by sip_code order by count(*) desc
 RAISE NOTICE 'Runtime (sec): %', (SELECT EXTRACT(EPOCH FROM clock_timestamp() - vstart_time));
-*/
 
-/*
+
 RAISE NOTICE 'Aggregating agg_carrier_network_sipcode_daily: %', clock_timestamp();
 vstart_time = clock_timestamp();
 delete from agg_carrier_network_sipcode_daily where batch_id in (select batch_id from tmp_batches_carrier);
@@ -462,7 +461,7 @@ agg.batch_id
 --select * from agg_carrier_network_sipcode_daily order by call_time desc limit 100000;
 --select sip_code from agg_carrier_network_sipcode_daily group by sip_code order by count(*) desc
 RAISE NOTICE 'Runtime (sec): %', (SELECT EXTRACT(EPOCH FROM clock_timestamp() - vstart_time));
-*/
+
 
 
 --generate tg 1-min agg
