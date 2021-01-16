@@ -4,7 +4,7 @@
 --you supply the batch_id parameter, it will process that batch. If you do not
 --then it will choose the oldest batch that has not received in any new records
 --in the last 10 seconds.
---Note: If a CDR batch gets borked (that's the technical term for sending in a batch batch)
+--Note: If a CDR batch gets borked (that's the technical term for sending in a bad batch)
 --, you can delete the row from agg_carrier_batch, resubmit the CDR file to the cdr_carrier table
 --and Rain Man will clear out the previous entries for that batch automatically.
 
@@ -25,6 +25,9 @@
 --Table: agg_carrier_customer_tg_1min
 --Table: agg_carrier_customer_tg_hourly
 --Table: agg_carrier_customer_tg_daily
+--Table: agg_carrier_mediaip_1min
+--Table: agg_carrier_mediaip_hourly
+--Table: agg_carrier_mediaip_daily
 
 --PSEUDO-DEPENDENCIES--
 --Some dependencies are only required for specific statistics.
@@ -217,10 +220,6 @@ agg.batch_id
 RAISE NOTICE 'Runtime (sec): %', (SELECT EXTRACT(EPOCH FROM clock_timestamp() - vstart_time));
 
 
---TODO add agg_carrier_customertg_1min
-
-
-
 
 --generate 1-min carrier-side signalip agg
 /*
@@ -322,12 +321,11 @@ RAISE NOTICE 'Runtime (sec): %', (SELECT EXTRACT(EPOCH FROM clock_timestamp() - 
 
 
 --generate 1-min carrier-side mediaip agg
-/*
 RAISE NOTICE 'Aggregating agg_carrier_mediaip_1min: %', clock_timestamp();
 vstart_time = clock_timestamp();
 delete from agg_carrier_mediaip_1min where batch_id in (select batch_id from tmp_batches_carrier);
 insert into agg_carrier_mediaip_1min
-	(batch_id, call_time, tg_id, media_ip, attempts, attempts_ner, attempts_acr, attempts_dcr, attempts_rvm, completions, duration, duration_billed, revenue, sd, code_487, code_404)
+	(batch_id, call_time, tg_id, media_ip, attempts, attempts_ner, completions, duration, sd)
 select 
 cdr.batch_id
 , date_trunc('minute', min(call_time)) as "call_time"
@@ -335,30 +333,23 @@ cdr.batch_id
 , media_ip
 , count(*) as "attempts"
 , sum(case when sip_code like '4%' then 0 else 1 end) as "attempts_ner"
-, count(distinct(ani)) as "attempts_acr"
-, count(distinct(dnis)) as "attempts_dcr"
-, null as "attempts_rvm"
 , sum(case cdr.sip_code when '200' then 1 else 0 end) as "completions"
 , sum(duration) as "duration"
-, sum(duration_billed) as "duration_billed"
-, sum(customer_revenue) as "revenue"
 , sum(case when duration between 1 and 6 then 1 else 0 end) as "sd"
-, sum(case sip_code when '487' then 1 else 0 end) as "code_487"
-, sum(case sip_code when '404' then 1 else 0 end) as "code_404"
 	   from cdr_carrier as cdr
 	   inner join tmp_batches_carrier as tmp on tmp.batch_id = cdr.batch_id
 	   where media_ip is not null
 	   group by cdr.batch_id, date_trunc('minute', "call_time"), tg_id, media_ip;
 --select * from agg_carrier_mediaip_1min order by call_time desc limit 100000
 RAISE NOTICE 'Runtime (sec): %', (SELECT EXTRACT(EPOCH FROM clock_timestamp() - vstart_time));
-*/
 
-/*
+
+
 RAISE NOTICE 'Aggregating agg_carrier_mediaip_hourly: %', clock_timestamp();
 vstart_time = clock_timestamp();
 delete from agg_carrier_mediaip_hourly where batch_id in (select batch_id from tmp_batches_carrier);
 insert into agg_carrier_mediaip_hourly
-	(batch_id, call_time, tg_id, media_ip, attempts, attempts_ner, attempts_acr, attempts_dcr, attempts_rvm, completions, duration, duration_billed, revenue, sd, code_487, code_404)
+	(batch_id, call_time, tg_id, media_ip, attempts, attempts_ner, completions, duration, sd)
 select 
 agg.batch_id
 , date_trunc('hour', min(call_time)) as "call_time"
@@ -366,30 +357,23 @@ agg.batch_id
 , media_ip
 , sum(attempts) as "attempts"
 , sum(attempts_ner) as "attempts_ner"
-, sum(attempts_acr) as "attempts_acr"
-, sum(attempts_dcr) as "attempts_dcr"
-, null as "attempts_rvm"
 , sum(completions) as "completions"
 , sum(duration) as "duration"
-, sum(duration_billed) as "duration_billed"
-, sum(revenue) as "revenue"
 , sum(sd) as "sd"
-, sum(code_487) as "code_487"
-, sum(code_404) as "code_404"
 	   from agg_carrier_mediaip_1min as agg
 	   inner join tmp_batches_carrier as tmp on tmp.batch_id = agg.batch_id
 	   where media_ip is not null
-	   group by agg.batch_id, date_trunc('hour', "call_time"), media_ip;
+	   group by agg.batch_id, date_trunc('hour', "call_time"), tg_id, media_ip;
 --select * from agg_carrier_mediaip_hourly order by call_time desc limit 100000
 RAISE NOTICE 'Runtime (sec): %', (SELECT EXTRACT(EPOCH FROM clock_timestamp() - vstart_time));
-*/
 
-/*
+
+
 RAISE NOTICE 'Aggregating agg_carrier_mediaip_daily: %', clock_timestamp();
 vstart_time = clock_timestamp();
 delete from agg_carrier_mediaip_daily where batch_id in (select batch_id from tmp_batches_carrier);
 insert into agg_carrier_mediaip_daily
-	(batch_id, call_time, tg_id, media_ip, attempts, attempts_ner, attempts_acr, attempts_dcr, attempts_rvm, completions, duration, duration_billed, revenue, sd, code_487, code_404)
+	(batch_id, call_time, tg_id, media_ip, attempts, attempts_ner, completions, duration, sd)
 select 
 agg.batch_id
 , date_trunc('day', min(call_time)) as "call_time"
@@ -397,23 +381,16 @@ agg.batch_id
 , media_ip
 , sum(attempts) as "attempts"
 , sum(attempts_ner) as "attempts_ner"
-, sum(attempts_acr) as "attempts_acr"
-, sum(attempts_dcr) as "attempts_dcr"
-, null as "attempts_rvm"
 , sum(completions) as "completions"
 , sum(duration) as "duration"
-, sum(duration_billed) as "duration_billed"
-, sum(revenue) as "revenue"
 , sum(sd) as "sd"
-, sum(code_487) as "code_487"
-, sum(code_404) as "code_404"
 	   from agg_carrier_mediaip_hourly as agg
 	   inner join tmp_batches_carrier as tmp on tmp.batch_id = agg.batch_id
 	   where media_ip is not null
 	   group by agg.batch_id, date_trunc('day', "call_time"), tg_id, media_ip;
 --select * from agg_carrier_mediaip_daily order by call_time desc limit 100000
 RAISE NOTICE 'Runtime (sec): %', (SELECT EXTRACT(EPOCH FROM clock_timestamp() - vstart_time));
-*/
+
 
 --generate carrier network-wide sip code aggs
 RAISE NOTICE 'Aggregating agg_carrier_network_sipcode_1min: %', clock_timestamp();
