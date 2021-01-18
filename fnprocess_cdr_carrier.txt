@@ -31,6 +31,9 @@
 --Table: agg_carrier_signalip_1min
 --Table: agg_carrier_signalip_hourly
 --Table: agg_carrier_signalip_daily
+--Table: agg_carrier_tg_routingprefix_1min
+--Table: agg_carrier_tg_routingprefix_hourly
+--Table: agg_carrier_tg_routingprefix_daily
 
 --PSEUDO-DEPENDENCIES--
 --Some dependencies are only required for specific statistics.
@@ -225,7 +228,6 @@ RAISE NOTICE 'Runtime (sec): %', (SELECT EXTRACT(EPOCH FROM clock_timestamp() - 
 
 
 --generate 1-min carrier-side signalip agg
-
 RAISE NOTICE 'Aggregating agg_carrier_signalip_1min: %', clock_timestamp();
 vstart_time = clock_timestamp();
 delete from agg_carrier_signalip_1min where batch_id in (select batch_id from tmp_batches_carrier);
@@ -247,7 +249,6 @@ cdr.batch_id
 	   group by cdr.batch_id, date_trunc('minute', "call_time"), signal_ip, tg_id;
 --select * from agg_carrier_signalip_1min order by call_time desc limit 100000
 RAISE NOTICE 'Runtime (sec): %', (SELECT EXTRACT(EPOCH FROM clock_timestamp() - vstart_time));
-
 
 
 RAISE NOTICE 'Aggregating agg_carrier_signalip_hourly: %', clock_timestamp();
@@ -610,7 +611,6 @@ RAISE NOTICE 'Runtime (sec): %', (SELECT EXTRACT(EPOCH FROM clock_timestamp() - 
 
 
 --generate tg prefix 1-min agg
-/*
 RAISE NOTICE 'Aggregating agg_carrier_routingprefix_1min: %', clock_timestamp();
 vstart_time = clock_timestamp();
 delete from agg_carrier_tg_routingprefix_1min where batch_id in (select batch_id from tmp_batches_carrier);
@@ -622,21 +622,15 @@ select cdr.batch_id
 , count(*) as "attempts"
 , sum(case cdr.sip_code when '200' then 1 else 0 end) as "completions"
 , sum(lcr_depth) as "lcr_depth"
-		--, sum(duration) as "duration"
-	   --, sum(duration_billed) as "duration_billed"
-	   --, sum(revenue) as "revenue"
-	   --sum(case when duration between 1 and 6 then 1 else 0 end) as "sdr"
-	   --sum(case sip_code when '487' then 1 else 0 end) as "code_",
-	   --sum(case sip_code when '404' then 1 else 0 end)
 	   from cdr_carrier as cdr
 	   inner join tmp_batches_carrier as tmp on tmp.batch_id = cdr.batch_id
 	   group by cdr.batch_id, date_trunc('minute', "call_time"), tg_id, routing_prefix;
 	   
 	   --select * from agg_carrier_tg_routingprefix_1min order by call_time desc limit 100000;
 RAISE NOTICE 'Runtime (sec): %', (SELECT EXTRACT(EPOCH FROM clock_timestamp() - vstart_time));
-*/
 
-/*
+
+
 RAISE NOTICE 'Aggregating agg_carrier_routingprefix_hourly: %', clock_timestamp();
 vstart_time = clock_timestamp();
 delete from agg_carrier_tg_routingprefix_hourly where batch_id in (select batch_id from tmp_batches_carrier);
@@ -654,9 +648,9 @@ select agg.batch_id
 	   
 	   --select * from agg_carrier_tg_routingprefix_hourly order by call_time desc limit 100000;
 RAISE NOTICE 'Runtime (sec): %', (SELECT EXTRACT(EPOCH FROM clock_timestamp() - vstart_time));
-*/
 
-/*
+
+
 RAISE NOTICE 'Aggregating agg_carrier_routingprefix_daily: %', clock_timestamp();
 vstart_time = clock_timestamp();
 delete from agg_carrier_tg_routingprefix_daily where batch_id in (select batch_id from tmp_batches_carrier);
@@ -674,7 +668,7 @@ select agg.batch_id
 	   
 	   --select * from agg_carrier_tg_routingprefix_daily order by call_time desc limit 100000;
 RAISE NOTICE 'Runtime (sec): %', (SELECT EXTRACT(EPOCH FROM clock_timestamp() - vstart_time));
-*/
+
 
 --generate tg prefix/juris 1-min agg
 --create table agg_carrier_tg_prefix_juris_1min as
@@ -755,14 +749,6 @@ RAISE NOTICE 'Runtime (sec): %', (SELECT EXTRACT(EPOCH FROM clock_timestamp() - 
 */
 --select * from trunk_groups_carrier order by created_at desc
 
-/*
-RAISE NOTICE 'Create signal IPs that don''t already exist: %', clock_timestamp();
-vstart_time = clock_timestamp();
-insert into signal_ips_carrier (signal_ip, tg_id)
-select signal_ip, tg_id from cdr_carrier where signal_ip || tg_id not in (select signal_ip || tg_id from signal_ips_carrier) group by signal_ip, tg_id;
-RAISE NOTICE 'Runtime (sec): %', (SELECT EXTRACT(EPOCH FROM clock_timestamp() - vstart_time));
-*/
---select * from signal_ips_carrier order by created_at desc
 
 
 
