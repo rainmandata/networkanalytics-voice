@@ -1,0 +1,21 @@
+-- Table: public.agg_carrier_tg_routingprefix_daily
+
+-- DROP TABLE public.agg_carrier_tg_routingprefix_daily CASCADE;
+
+CREATE TABLE public.agg_carrier_tg_routingprefix_daily
+(
+    batch_id text COLLATE pg_catalog."default" NOT NULL,
+    call_time timestamp without time zone NOT NULL,
+    tg_id text COLLATE pg_catalog."default" NOT NULL,
+    routing_prefix text COLLATE pg_catalog."default" NOT NULL,
+    attempts int NOT NULL,
+    completions int NOT NULL,
+lcr_depth int
+)
+WITH (
+    OIDS = FALSE
+)
+TABLESPACE pg_default;
+
+ALTER TABLE public.agg_carrier_tg_routingprefix_daily
+    OWNER to postgres;
