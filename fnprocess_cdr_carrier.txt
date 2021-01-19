@@ -34,6 +34,7 @@
 --Table: agg_carrier_tg_routingprefix_1min
 --Table: agg_carrier_tg_routingprefix_hourly
 --Table: agg_carrier_tg_routingprefix_daily
+--Table: disc_numbers
 
 --PSEUDO-DEPENDENCIES--
 --Some dependencies are only required for specific statistics.
@@ -702,21 +703,23 @@ RAISE NOTICE 'Runtime (sec): %', (SELECT EXTRACT(EPOCH FROM clock_timestamp() - 
 
 
 --record bad numbers (404)
---TODO: Add code to reset the expires_at instead of just appending a second enty of same number.
---TODO: add trusted_404 to trunk_groups_carrier
-/* BETA
-RAISE NOTICE 'Aggregating bad_numbers: %', clock_timestamp();
+RAISE NOTICE 'Aggregating disc_numbers: %', clock_timestamp();
 vstart_time = clock_timestamp();
-insert into bad_numbers (dnis, created_at, expires_at)
-	select dnis, now(), now() + interval '10' day
+insert into disc_numbers (dnis, created_at, expires_at)
+	select dnis, now(), now() + interval '7' day
 	from cdr_carrier as cdr
 	inner join tmp_batches_carrier as tmp on tmp.batch_id = cdr.batch_id
-	where sip_code = '404'
-	group by dnis;
-	
-	--select * from bad_numbers order by created_at desc limit 100000;
+	inner join trunk_groups_carrier on trunk_groups_carrier.tg_id = cdr.tg_id
+	where cdr.sip_code = '404'
+	and trunk_groups_carrier.trusted_404 = 1
+	group by dnis
+	ON CONFLICT (dnis) DO UPDATE set created_at = now(), expires_at = now() + interval '7' day;
+	--select * from tmp_batches_carrier
+	--select * from cdr_carrier where sip_code = '404'
+	--select * from trunk_groups_carrier where tg_id = '31'
+	--select * from disc_numbers order by created_at desc limit 100000;
 RAISE NOTICE 'Runtime (sec): %', (SELECT EXTRACT(EPOCH FROM clock_timestamp() - vstart_time));
-*/
+
 
 --close off the batch. KEEP AT BOTTOM
 RAISE NOTICE 'Aggregating agg_carrier_batch: %', clock_timestamp();
