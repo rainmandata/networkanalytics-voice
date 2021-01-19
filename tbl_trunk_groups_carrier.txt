@@ -22,6 +22,7 @@ CREATE TABLE public.trunk_groups_carrier
     target_minutes integer,
     target_rate numeric(20,10),
     target_404_max numeric(5,2),
+    trusted_404 smallint NOT NULL DEFAULT 0,
     created_at timestamp without time zone NOT NULL DEFAULT now(),
     updated_at timestamp without time zone,
     CONSTRAINT trunk_groups_carrier_pkey PRIMARY KEY (tg_id)
