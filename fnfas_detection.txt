@@ -1,0 +1,82 @@
+--DOCUMENTATION: https://github.com/rainmandata/networkanalytics-voice/wiki/FAS-Detection
+--SAMPLE EXECUTION: select * from fnfas_detection('2021-01-01', '2021-01-31 12:00:00');
+
+--DEPENDENCIES
+--Table: agg_carrier_mediaip_1min - https://github.com/rainmandata/networkanalytics-voice/blob/main/tbl_agg_carrier_mediaip_1min.txt
+--Table: trunk_groups_carrier - https://github.com/rainmandata/networkanalytics-voice/blob/main/tbl_trunk_groups_carrier.txt
+
+--AUGMENTATIONS
+--1. Output what % of TG traffic hit bad media IPs.
+
+--DROP FUNCTION fnfas_detection(timestamp without time zone,timestamp without time zone);
+
+create or replace function fnfas_detection (
+      p_start_datetime timestamp without time zone
+	, p_end_datetime timestamp without time zone
+) 
+returns table ( tg_id_carrier text
+			   , asr_tg_average numeric(5, 2) 
+, media_ip text
+			  , attempts bigint
+			  , completions bigint
+			  , asr_this_mediaip numeric(5, 2)
+, minutes numeric(20, 2)
+			  , tg_name text
+) 
+language plpgsql
+as $$
+declare 
+
+begin
+
+--Carriers won't send all your attempts off to fake audio. That would be too obvious.
+--We look for specific IPs who behavior is a little too good relative to
+--the carrier's normal IP behavior.
+
+DROP TABLE IF EXISTS tmp_fas_detect_per_tg;
+
+CREATE TABLE tmp_fas_detect_per_tg as
+	SELECT tg_id, sum(agg_carrier_mediaip_1min.attempts) as "attempts"
+	, sum(agg_carrier_mediaip_1min.completions) as "completions"
+	--, sum(agg_carrier_mediaip_1min.duration) as "duration"
+	, ((sum(agg_carrier_mediaip_1min.completions) / sum(agg_carrier_mediaip_1min.attempts)::numeric) * 100)::numeric(5, 2) as "asr"
+		from agg_carrier_mediaip_1min 
+	where call_time >= p_start_datetime
+	and call_time <= p_end_datetime
+	group by tg_id;
+	--select * from tmp_fas_detect_per_tg order by attempts desc;
+
+DROP TABLE IF EXISTS tmp_fas_detect_per_mediaip;
+
+CREATE TABLE tmp_fas_detect_per_mediaip AS
+	select tmp_fas_detect_per_tg.tg_id
+		, tmp_fas_detect_per_tg.asr as "tg_asr"
+		, agg_carrier_mediaip_1min.media_ip
+		, sum(agg_carrier_mediaip_1min.attempts) as "mediaip_attempts"
+		, sum(agg_carrier_mediaip_1min.completions) as "mediaip_completions"
+		, ((sum(agg_carrier_mediaip_1min.completions) / sum(agg_carrier_mediaip_1min.attempts)::numeric) * 100)::numeric(5, 2) as "mediaip_asr"
+		, (sum(agg_carrier_mediaip_1min.duration) / 60.00)::numeric(20, 2) as "minutes"
+	from tmp_fas_detect_per_tg
+	inner join agg_carrier_mediaip_1min on agg_carrier_mediaip_1min.tg_id = tmp_fas_detect_per_tg.tg_id
+	where agg_carrier_mediaip_1min.call_time >= p_start_datetime
+	and agg_carrier_mediaip_1min.call_time <= p_end_datetime
+	group by tmp_fas_detect_per_tg.tg_id, tmp_fas_detect_per_tg.asr, agg_carrier_mediaip_1min.media_ip;
+--select * from tmp_fas_detect_per_mediaip
+
+RETURN QUERY 
+	select tmp_fas_detect_per_mediaip.tg_id
+	, tmp_fas_detect_per_mediaip.tg_asr as "asr_tg_average"
+	, tmp_fas_detect_per_mediaip.media_ip as "media_ip"
+	, tmp_fas_detect_per_mediaip.mediaip_attempts
+	, tmp_fas_detect_per_mediaip.mediaip_completions
+	, tmp_fas_detect_per_mediaip.mediaip_asr as "asr_this_mediaip"
+	, tmp_fas_detect_per_mediaip.minutes as "minutes"
+	, coalesce(trunk_groups_carrier.tg_name, 'trunk_groups_carrier.tg_name not set.') as tg_name
+from tmp_fas_detect_per_mediaip
+left outer join trunk_groups_carrier on trunk_groups_carrier.tg_id = tmp_fas_detect_per_mediaip.tg_id
+where tmp_fas_detect_per_mediaip.mediaip_attempts >= 1 --TODO change to 100
+	and (tmp_fas_detect_per_mediaip.mediaip_asr >= 97 or tmp_fas_detect_per_mediaip.mediaip_asr >= (tmp_fas_detect_per_mediaip.tg_asr + 10))
+	order by tmp_fas_detect_per_mediaip.mediaip_attempts desc
+	;
+
+end; $$ 
