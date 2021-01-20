@@ -1,0 +1,61 @@
+--DOCUMENTATION: https://github.com/rainmandata/networkanalytics-voice/wiki/Carrier-Performance-Decks
+--SAMPLE EXECUTION: select * from fnanalyze_deck_perf_carrier('9', '2020-01-01', '2021-12-31');
+
+--AUGMENTATIONS
+--Make sure carrier deck didn't change within the period specified.
+--Modify to exclude uncompleteable attempts (404, etc)
+
+--DEPENDENCIES
+--View: vw_current_tg_deck_carrier
+--Table: deck_term_prefix_carrier
+--Table: agg_carrier_tg_routingprefix_daily
+
+
+create or replace function fnanalyze_deck_perf_carrier (
+   p_tg_id text --carrier trunk group ID
+	, p_start_date date
+	, p_end_date date
+) 
+returns table ( tg_id text
+			  , deck_id text
+			  , prefix text
+			  , attempts bigint
+			  , completions bigint
+			  , asr numeric(5, 2)) 
+language plpgsql
+as $$
+declare 
+
+begin
+
+DROP TABLE IF EXISTS tmp_deck_perf_carrier;
+
+--results left in tmp table between runs in case you want to pull from there.
+CREATE TABLE tmp_deck_perf_carrier AS
+	select vw_current_tg_deck_carrier.tg_id
+	, vw_current_tg_deck_carrier.deck_id 
+	, deck_term_prefix_carrier.prefix
+	, coalesce(sum(agg_carrier_tg_routingprefix_daily.attempts), 0) as "attempts"
+	, coalesce(sum(agg_carrier_tg_routingprefix_daily.completions), 0) as "completions"
+	, case coalesce(sum(agg_carrier_tg_routingprefix_daily.attempts), 0) when 0 then 0 else ((coalesce(sum(agg_carrier_tg_routingprefix_daily.completions), 0) / coalesce(sum(agg_carrier_tg_routingprefix_daily.attempts), 0)::numeric) * 100)::numeric(5, 2) end as "asr"
+	from vw_current_tg_deck_carrier
+	inner join deck_term_prefix_carrier on deck_term_prefix_carrier.deck_id = vw_current_tg_deck_carrier.deck_id
+	left outer join agg_carrier_tg_routingprefix_daily on agg_carrier_tg_routingprefix_daily.routing_prefix = deck_term_prefix_carrier.prefix
+		where vw_current_tg_deck_carrier.tg_id = p_tg_id
+		and agg_carrier_tg_routingprefix_daily.call_time >= p_start_date
+		and agg_carrier_tg_routingprefix_daily.call_time <= p_end_date
+		group by vw_current_tg_deck_carrier.tg_id
+	, vw_current_tg_deck_carrier.deck_id 
+	, deck_term_prefix_carrier.prefix;
+
+RETURN QUERY 
+	select tmp_deck_perf_carrier.tg_id
+	, tmp_deck_perf_carrier.deck_id
+	, tmp_deck_perf_carrier.prefix
+	, tmp_deck_perf_carrier.attempts
+	, tmp_deck_perf_carrier.completions
+	, tmp_deck_perf_carrier.asr
+	from tmp_deck_perf_carrier
+	order by attempts desc;
+
+end; $$ 
