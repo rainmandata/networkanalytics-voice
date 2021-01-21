@@ -19,6 +19,7 @@
 --Table: agg_carrier_network_sipcode_1min
 --Table: agg_carrier_network_sipcode_hourly
 --Table: agg_carrier_network_sipcode_daily
+--Table: agg_carrier_tg_1sec
 --Table: agg_carrier_tg_1min
 --Table: agg_carrier_tg_hourly
 --Table: agg_carrier_tg_daily
@@ -427,6 +428,23 @@ agg.batch_id
 --select sip_code from agg_carrier_network_sipcode_daily group by sip_code order by count(*) desc
 RAISE NOTICE 'Runtime (sec): %', (SELECT EXTRACT(EPOCH FROM clock_timestamp() - vstart_time));
 
+
+--generate carrier tg 1-sec agg
+RAISE NOTICE 'Aggregating agg_carrier_tg_1sec: %', clock_timestamp();
+vstart_time = clock_timestamp();
+delete from agg_carrier_tg_1sec where batch_id in (select batch_id from tmp_batches_carrier);
+insert into agg_carrier_tg_1sec (batch_id, call_time, tg_id, attempts, completions)
+select cdr.batch_id
+, date_trunc('second', min(call_time)) as "call_time"
+, tg_id
+, count(*) as "attempts"
+, sum(case cdr.sip_code when '200' then 1 else 0 end) as "completions"
+	   from cdr_carrier as cdr
+	   inner join tmp_batches_carrier as tmp on tmp.batch_id = cdr.batch_id
+	   group by cdr.batch_id, date_trunc('second', "call_time"), tg_id;
+	   
+	   --select * from agg_carrier_tg_1sec order by call_time desc limit 100000;
+RAISE NOTICE 'Runtime (sec): %', (SELECT EXTRACT(EPOCH FROM clock_timestamp() - vstart_time));
 
 
 --generate carrier tg 1-min agg

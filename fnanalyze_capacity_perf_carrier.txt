@@ -1,0 +1,37 @@
+--DOCUMENTATION: https://github.com/rainmandata/networkanalytics-voice/wiki/Carrier-Performance-vs-Capacity
+--SAMPLE EXECUTION: select * from fnanalyze_capacity_perf_carrier('37', '2021-01-01 10:00:00', '2021-01-31 17:00:00');
+
+--AUGMENTATIONS
+
+
+--DEPENDENCIES
+--Table: agg_carrier_tg_1sec
+
+
+create or replace function fnanalyze_capacity_perf_carrier (
+   p_tg_id text --carrier trunk group ID
+	, p_start_date timestamp without time zone
+	, p_end_date timestamp without time zone
+) 
+returns table ( call_time timestamp without time zone
+			  , cps int
+			  , completions int
+			  , asr numeric(5, 2)) 
+language plpgsql
+as $$
+declare 
+
+begin
+
+RETURN QUERY 
+	select agg_carrier_tg_1sec.call_time
+	, agg_carrier_tg_1sec.attempts as "cps"
+	, agg_carrier_tg_1sec.completions
+	, ((agg_carrier_tg_1sec.completions / agg_carrier_tg_1sec.attempts::numeric) * 100) ::numeric(5, 2) as "asr"
+	from agg_carrier_tg_1sec
+	where agg_carrier_tg_1sec.tg_id = p_tg_id
+	and agg_carrier_tg_1sec.call_time >= p_start_date
+	and agg_carrier_tg_1sec.call_time <= p_end_date
+	order by agg_carrier_tg_1sec.call_time;
+
+end; $$ 
