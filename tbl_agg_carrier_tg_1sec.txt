@@ -1,0 +1,17 @@
+-- DROP TABLE public.agg_carrier_tg_1sec CASCADE;
+
+CREATE TABLE public.agg_carrier_tg_1sec
+(
+    batch_id text COLLATE pg_catalog."default" not null,
+    call_time timestamp without time zone not null,
+    tg_id text COLLATE pg_catalog."default" not null,
+    attempts int not null,
+    completions int not null
+)
+WITH (
+    OIDS = FALSE
+)
+TABLESPACE pg_default;
+
+ALTER TABLE public.agg_carrier_tg_1sec
+    OWNER to postgres;
