@@ -1,0 +1,45 @@
+--DOCUMENTATION: https://github.com/rainmandata/networkanalytics-voice/wiki/Weighted-Target-Files
+--SAMPLE EXECUTION: select * from fnweighted_targets('2021-01-01', '2021-01-31 23:59:59');
+
+--DEPENDENCIES
+--Table: agg_carrier_tg_routingprefix_daily
+
+--AUGMENTATIONS
+--1. 
+
+--DROP FUNCTION fnweighted_targets(timestamp without time zone,timestamp without time zone);
+
+create or replace function fnweighted_targets (
+      p_start_datetime timestamp without time zone
+	, p_end_datetime timestamp without time zone
+) 
+returns table ( prefix text
+			   , attempts bigint
+			   , completions bigint
+			   , mou bigint
+			   , total_spent numeric(20, 10)
+			   , connected_rate_min numeric(20, 10)
+				, connected_rate_avg numeric(20, 10)
+) 
+language plpgsql
+as $$
+declare 
+
+begin
+
+RETURN QUERY 
+	select agg_carrier_tg_routingprefix_daily.routing_prefix
+	, sum(agg_carrier_tg_routingprefix_daily.attempts) as "attempts"
+	, sum(agg_carrier_tg_routingprefix_daily.completions) as "completions"
+	, sum(agg_carrier_tg_routingprefix_daily.duration_billed) / 60 as "mou"
+	, sum(agg_carrier_tg_routingprefix_daily.carrier_cost) as "total_spent"
+	, min(agg_carrier_tg_routingprefix_daily.carrier_rate_min) as "connected_rate_min"
+	, sum(agg_carrier_tg_routingprefix_daily.carrier_cost) / (sum(agg_carrier_tg_routingprefix_daily.duration_billed) / 60.000000) as connected_rate_avg
+from agg_carrier_tg_routingprefix_daily
+	where agg_carrier_tg_routingprefix_daily.call_time >= p_start_datetime
+	and agg_carrier_tg_routingprefix_daily.call_time <= p_end_datetime
+	group by agg_carrier_tg_routingprefix_daily.routing_prefix
+	order by sum(agg_carrier_tg_routingprefix_daily.duration_billed) desc
+	;
+
+end; $$ 
