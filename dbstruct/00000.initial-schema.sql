@@ -8,6 +8,19 @@
 ------------------------------------------------------------------
 
 
+CREATE OR REPLACE FUNCTION update_modified_column()
+RETURNS TRIGGER AS $$
+BEGIN
+   IF row(NEW.*) IS DISTINCT FROM row(OLD.*) THEN
+      NEW.updated_at = now();
+      RETURN NEW;
+   ELSE
+      RETURN OLD;
+   END IF;
+END;
+$$ language 'plpgsql';
+
+
 --
 -- TABLES
 --
@@ -1259,6 +1272,7 @@ CREATE TABLE public.carriers
     CONSTRAINT carriers_pkey PRIMARY KEY (carrier_id)
 )
 TABLESPACE pg_default;
+CREATE TRIGGER upd_carriers_moddatetime BEFORE UPDATE ON public.carriers FOR EACH ROW EXECUTE PROCEDURE public.update_modified_column();
 
 
 -- Table: public.cdr_customer
@@ -1322,6 +1336,7 @@ CREATE TABLE public.customers
     CONSTRAINT customer_pkey PRIMARY KEY (customer_id)
 )
 TABLESPACE pg_default;
+CREATE TRIGGER upd_customers_moddatetime BEFORE UPDATE ON public.customers FOR EACH ROW EXECUTE PROCEDURE public.update_modified_column();
 
 
 -- Table: public.data_retention_setup
@@ -1357,6 +1372,7 @@ CREATE TABLE public.deck_term_prefix_carrier
     CONSTRAINT deck_term_prefix_carrier_pkey PRIMARY KEY (deck_id, prefix)
 )
 TABLESPACE pg_default;
+CREATE TRIGGER upd_deck_term_prefix_carrier_moddatetime BEFORE UPDATE ON public.deck_term_prefix_carrier FOR EACH ROW EXECUTE PROCEDURE public.update_modified_column();
 
 
 -- Table: public.deck_term_prefix_customer
@@ -1375,6 +1391,7 @@ CREATE TABLE public.deck_term_prefix_customer
     CONSTRAINT deck_term_prefix_customer_pkey PRIMARY KEY (deck_id, prefix)
 )
 TABLESPACE pg_default;
+CREATE TRIGGER upd_deck_term_prefix_customer_moddatetime BEFORE UPDATE ON public.deck_term_prefix_customer FOR EACH ROW EXECUTE PROCEDURE public.update_modified_column();
 
 
 -- Table: public.decks_apply_carrier
@@ -1384,11 +1401,12 @@ CREATE TABLE public.decks_apply_carrier
     deck_id text COLLATE pg_catalog."default" NOT NULL,
     tg_id text COLLATE pg_catalog."default" NOT NULL,
     apply_date timestamp with time zone NOT NULL DEFAULT now(),
-    created_at timestamp without time zone DEFAULT now(),
+    created_at timestamp without time zone NOT NULL DEFAULT now(),
     updated_at timestamp without time zone,
     CONSTRAINT decks_apply_carrier_pkey PRIMARY KEY (deck_id, tg_id, apply_date)
 )
 TABLESPACE pg_default;
+CREATE TRIGGER upd_decks_apply_carrier_moddatetime BEFORE UPDATE ON public.decks_apply_carrier FOR EACH ROW EXECUTE PROCEDURE public.update_modified_column();
 
 
 -- Table: public.decks_apply_customer
@@ -1398,11 +1416,12 @@ CREATE TABLE public.decks_apply_customer
     deck_id text COLLATE pg_catalog."default" NOT NULL,
     tg_id text COLLATE pg_catalog."default" NOT NULL,
     apply_date timestamp with time zone NOT NULL DEFAULT now(),
-    created_at timestamp without time zone DEFAULT now(),
+    created_at timestamp without time zone NOT NULL DEFAULT now(),
     updated_at timestamp without time zone,
     CONSTRAINT decks_apply_customer_pkey PRIMARY KEY (deck_id, tg_id, apply_date)
 )
 TABLESPACE pg_default;
+CREATE TRIGGER upd_decks_apply_customer_moddatetime BEFORE UPDATE ON public.decks_apply_customer FOR EACH ROW EXECUTE PROCEDURE public.update_modified_column();
 
 
 -- Table: public.decks_carrier
@@ -1419,6 +1438,7 @@ CREATE TABLE public.decks_carrier
     CONSTRAINT decks_carrier_pkey PRIMARY KEY (deck_id)
 )
 TABLESPACE pg_default;
+CREATE TRIGGER upd_decks_carrier_moddatetime BEFORE UPDATE ON public.decks_carrier FOR EACH ROW EXECUTE PROCEDURE public.update_modified_column();
 
 
 -- Table: public.decks_customer
@@ -1438,13 +1458,14 @@ WITH (
     OIDS = FALSE
 )
 TABLESPACE pg_default;
+CREATE TRIGGER upd_decks_customer_moddatetime BEFORE UPDATE ON public.decks_customer FOR EACH ROW EXECUTE PROCEDURE public.update_modified_column();
 
 
 -- Table: public.disc_numbers
 CREATE TABLE public.disc_numbers
 (
     dnis text NOT NULL,
-    created_at timestamp without time zone NOT NULL,
+    created_at timestamp without time zone NOT NULL DEFAULT now(),
     expires_at timestamp without time zone NOT NULL,
     PRIMARY KEY (dnis)
 )
@@ -1487,6 +1508,7 @@ WITH (
     OIDS = FALSE
 )
 TABLESPACE pg_default;
+CREATE TRIGGER upd_signal_ips_customer_moddatetime BEFORE UPDATE ON public.signal_ips_customer FOR EACH ROW EXECUTE PROCEDURE public.update_modified_column();
 
 
 -- Table: public.tg_routing
@@ -1503,6 +1525,7 @@ WITH (
     OIDS = FALSE
 )
 TABLESPACE pg_default;
+CREATE TRIGGER upd_tg_routing_moddatetime BEFORE UPDATE ON public.tg_routing FOR EACH ROW EXECUTE PROCEDURE public.update_modified_column();
 
 
 -- Table: public.transactions_customer
@@ -1552,6 +1575,7 @@ CREATE TABLE public.trunk_groups_carrier
     CONSTRAINT trunk_groups_carrier_pkey PRIMARY KEY (tg_id)
 )
 TABLESPACE pg_default;
+CREATE TRIGGER upd_trunk_groups_carrier_moddatetime BEFORE UPDATE ON public.trunk_groups_carrier FOR EACH ROW EXECUTE PROCEDURE public.update_modified_column();
 
 
 -- Table: public.trunk_groups_customer
@@ -1585,6 +1609,7 @@ CREATE TABLE public.trunk_groups_customer
     CONSTRAINT trunk_groups_customer_pkey PRIMARY KEY (tg_id)
 )
 TABLESPACE pg_default;
+CREATE TRIGGER upd_trunk_groups_customer_moddatetime BEFORE UPDATE ON public.trunk_groups_customer FOR EACH ROW EXECUTE PROCEDURE public.update_modified_column();
 
 
 -- Table: public.trunks_carrier
@@ -1603,6 +1628,7 @@ CREATE TABLE public.trunks_carrier
     CONSTRAINT trunks_carrier_pkey PRIMARY KEY (trunk_id)
 )
 TABLESPACE pg_default;
+CREATE TRIGGER upd_trunks_carrier_moddatetime BEFORE UPDATE ON public.trunks_carrier FOR EACH ROW EXECUTE PROCEDURE public.update_modified_column();
 
 
 -- Table: public.trunks_customer
@@ -1621,6 +1647,7 @@ CREATE TABLE public.trunks_customer
     CONSTRAINT trunks_customer_pkey PRIMARY KEY (trunk_id)
 )
 TABLESPACE pg_default;
+CREATE TRIGGER upd_trunks_customer_moddatetime BEFORE UPDATE ON public.trunks_customer FOR EACH ROW EXECUTE PROCEDURE public.update_modified_column();
 
 
 
